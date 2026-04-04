@@ -32,9 +32,10 @@
       <!-- Crack Detection Section -->
       <section class="panel">
         <h2>Crack Detection</h2>
+        <button id="scan-view-btn">Scan Current View</button>
         <div class="upload-group">
           <input type="file" id="photo-file" accept="image/*">
-          <button id="detect-btn" disabled>Detect Cracks</button>
+          <button id="detect-btn" disabled>Detect from Photo</button>
         </div>
         <label for="confidence-slider">Confidence: <span id="confidence-val">0.25</span></label>
         <input type="range" id="confidence-slider" min="0" max="1" step="0.05" value="0.25">

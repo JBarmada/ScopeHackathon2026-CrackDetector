@@ -97,7 +97,9 @@ router.get('/', async (req, res, next) => {
     }));
     res.json(items);
   } catch (err) {
-    next(err);
+    // No APS credentials or bucket doesn't exist yet — return empty list
+    console.warn('Could not list models (APS not configured?):', err.message);
+    res.json([]);
   }
 });
 

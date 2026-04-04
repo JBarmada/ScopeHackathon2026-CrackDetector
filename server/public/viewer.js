@@ -3,6 +3,7 @@
 // ============================================================
 
 let viewer = null;
+let crackOverlay = null;
 let currentMode = 'viewer'; // 'viewer' or 'canvas'
 let modelIsLoaded = false; // true only after a 3D model is loaded in the viewer
 
@@ -26,6 +27,7 @@ const detectStatus = document.getElementById('detect-status');
 const resultsPanel = document.getElementById('results-panel');
 const resultsList = document.getElementById('results-list');
 const clearOverlaysBtn = document.getElementById('clear-overlays-btn');
+const scanViewBtn = document.getElementById('scan-view-btn');
 
 // ============================================================
 // Part A: APS Viewer Initialization
@@ -65,7 +67,10 @@ function initViewer() {
         'CrackOverlayExtension',
         CrackOverlayExtension,
       );
-      viewer.loadExtension('CrackOverlayExtension');
+      viewer.loadExtension('CrackOverlayExtension').then((ext) => {
+        crackOverlay = ext;
+        console.log('CrackOverlayExtension loaded:', ext);
+      });
 
       resolve(viewer);
     });
@@ -112,7 +117,7 @@ class CrackOverlayExtension extends Autodesk.Viewing.Extension {
     this.overlayContainer.id = 'crack-overlay';
     this.overlayContainer.style.cssText =
       'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99;';
-    this.viewer.container.appendChild(this.overlayContainer);
+    viewerContainer.appendChild(this.overlayContainer);
     return true;
   }
 
@@ -257,14 +262,17 @@ function drawPhotoWithDetections(img, detections) {
       ctx.stroke();
     }
 
-    // Draw label
+    // Draw label — flip inside box if too close to top edge
     const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
     ctx.font = 'bold 13px sans-serif';
     const textW = ctx.measureText(label).width;
+    const labelX = offsetX + x1 * scale;
+    const boxTop = offsetY + y1 * scale;
+    const labelY = boxTop < 20 ? boxTop + 18 : boxTop - 2;
     ctx.fillStyle = color;
-    ctx.fillRect(offsetX + x1 * scale, offsetY + y1 * scale - 18, textW + 8, 18);
+    ctx.fillRect(labelX, labelY - 16, textW + 8, 18);
     ctx.fillStyle = severity === 'high' ? '#fff' : '#000';
-    ctx.fillText(label, offsetX + x1 * scale + 4, offsetY + y1 * scale - 4);
+    ctx.fillText(label, labelX + 4, labelY);
   });
 }
 
@@ -402,6 +410,29 @@ confidenceSlider.addEventListener('input', () => {
   confidenceVal.textContent = confidenceSlider.value;
 });
 
+const MAX_IMG_SIZE = 1280;
+
+function resizeImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, MAX_IMG_SIZE / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob((blob) => {
+        const resizedImg = new Image();
+        resizedImg.onload = () => resolve({ blob, img: resizedImg });
+        resizedImg.src = URL.createObjectURL(blob);
+      }, 'image/jpeg', 0.92);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 detectBtn.addEventListener('click', async () => {
   const file = photoFileInput.files[0];
   if (!file) return;
@@ -410,8 +441,9 @@ detectBtn.addEventListener('click', async () => {
   setStatus(detectStatus, 'Analyzing image...', 'info');
 
   try {
+    const { blob, img: resizedImg } = await resizeImage(file);
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', blob, file.name);
 
     const confidence = confidenceSlider.value;
     const resp = await fetch(`/api/inspect/detect?confidence=${confidence}`, {
@@ -425,24 +457,15 @@ detectBtn.addEventListener('click', async () => {
     setStatus(detectStatus, `Found ${count} defect${count !== 1 ? 's' : ''}`, 'success');
     showResults(data.detections);
 
-    // Load the photo and display detections
-    const img = new Image();
-    img.onload = () => {
-      currentPhoto = img;
-      canvasDetections = data.detections;
+    currentPhoto = resizedImg;
+    canvasDetections = data.detections;
 
-      if (viewer && modelIsLoaded) {
-        // Overlay on the 3D viewer (only when a model is actually loaded)
-        const ext = viewer.getExtension('CrackOverlayExtension');
-        if (ext) {
-          ext.showDetections(data.detections, data.image_width, data.image_height);
-        }
-      } else {
-        // 2D canvas — show the photo with detections drawn on it
-        drawPhotoWithDetections(img, data.detections);
-      }
-    };
-    img.src = URL.createObjectURL(file);
+    if (viewer && modelIsLoaded && crackOverlay) {
+      crackOverlay.showDetections(data.detections, data.image_width, data.image_height);
+    } else {
+      console.log('Canvas fallback — viewer:', !!viewer, 'modelLoaded:', modelIsLoaded, 'overlay:', !!crackOverlay);
+      drawPhotoWithDetections(resizedImg, data.detections);
+    }
   } catch (err) {
     setStatus(detectStatus, err.message, 'error');
   } finally {
@@ -452,10 +475,7 @@ detectBtn.addEventListener('click', async () => {
 
 // --- Clear Overlays ---
 clearOverlaysBtn.addEventListener('click', () => {
-  if (viewer) {
-    const ext = viewer.getExtension('CrackOverlayExtension');
-    if (ext) ext.clearDetections();
-  }
+  if (crackOverlay) crackOverlay.clearDetections();
 
   ctx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
   resultsPanel.classList.add('hidden');
@@ -466,6 +486,50 @@ clearOverlaysBtn.addEventListener('click', () => {
 
   if (!viewer) {
     switchToViewer();
+  }
+});
+
+// --- Scan Current View ---
+scanViewBtn.addEventListener('click', async () => {
+  if (!viewer || !modelIsLoaded) {
+    setStatus(detectStatus, 'Load a 3D model first', 'error');
+    return;
+  }
+
+  scanViewBtn.disabled = true;
+  setStatus(detectStatus, 'Capturing view...', 'info');
+
+  try {
+    // Capture the viewer canvas as a blob
+    const canvas = viewerContainer.querySelector('canvas.lmv-webgl-canvas')
+      || viewerContainer.querySelector('canvas');
+
+    if (!canvas) throw new Error('Could not find viewer canvas');
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    const formData = new FormData();
+    formData.append('file', blob, 'viewer-snapshot.jpg');
+
+    setStatus(detectStatus, 'Analyzing view...', 'info');
+    const confidence = confidenceSlider.value;
+    const resp = await fetch(`/api/inspect/detect?confidence=${confidence}`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Detection failed');
+
+    const count = data.detections.length;
+    setStatus(detectStatus, `Found ${count} defect${count !== 1 ? 's' : ''}`, count > 0 ? 'success' : 'info');
+    showResults(data.detections);
+
+    if (crackOverlay) {
+      crackOverlay.showDetections(data.detections, data.image_width, data.image_height);
+    }
+  } catch (err) {
+    setStatus(detectStatus, err.message, 'error');
+  } finally {
+    scanViewBtn.disabled = false;
   }
 });
 
