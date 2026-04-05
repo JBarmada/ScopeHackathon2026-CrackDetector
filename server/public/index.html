@@ -31,27 +31,44 @@
         <button id="unload-model-btn" disabled>Unload Model</button>
       </section>
 
+      <!-- Measurement & Calibration -->
+      <section class="panel" id="measure-panel">
+        <h2>Measurement Tools</h2>
+        <div id="calibration-status" class="status info">No calibration set</div>
+        <button id="calibrate-btn" disabled>📐 Calibrate Scale</button>
+        <button id="measure-depth-btn" disabled>📏 Measure Depth (2 pts)</button>
+        <div id="measure-status" class="status hidden"></div>
+        <div id="depth-result" class="hidden">
+          <span class="depth-label">Measured depth:</span>
+          <span id="depth-value" class="depth-value">—</span>
+        </div>
+      </section>
+
       <!-- Crack Detection Section -->
       <section class="panel">
         <h2>Crack Detection</h2>
-        <button id="scan-view-btn">Scan Current View</button>
+        <button id="scan-view-btn">🤖 Scan Current View (AI)</button>
         <div class="upload-group">
           <input type="file" id="photo-file" accept="image/*">
-          <button id="detect-btn" disabled>Detect from Photo</button>
+          <button id="detect-btn" disabled>🤖 Detect from Photo (AI)</button>
         </div>
-        <label for="confidence-slider">Confidence: <span id="confidence-val">0.25</span></label>
+        <button id="draw-mode-btn">✏️ Manual Draw Mode</button>
+        <div id="draw-mode-hint" class="draw-hint hidden">Click &amp; drag on the view to draw a crack bounding box. Press <strong>Esc</strong> to exit.</div>
+        <label for="confidence-slider">AI Confidence: <span id="confidence-val">0.25</span></label>
         <input type="range" id="confidence-slider" min="0" max="1" step="0.05" value="0.25">
         <div id="detect-status" class="status"></div>
 
         <!-- Detection Results -->
         <div id="results-panel" class="hidden">
-          <h3>Results</h3>
+          <h3>Detections <span id="results-count" class="badge"></span></h3>
           <div id="results-list"></div>
+          <button id="evaluate-btn" class="btn-evaluate">📋 Full Evaluation Report</button>
         </div>
       </section>
 
       <section class="panel">
-        <button id="report-btn">30-Day Report</button>
+        <button id="danger-info-btn" class="btn-danger-info">⚠️ Crack Danger Reference</button>
+        <button id="report-btn">📊 30-Day Report</button>
         <button id="clear-overlays-btn">Clear Overlays</button>
       </section>
     </aside>
@@ -60,13 +77,17 @@
     <main id="main-area">
       <div id="viewer-container"></div>
       <canvas id="photo-canvas" class="hidden"></canvas>
+      <!-- Manual draw overlay canvas -->
+      <canvas id="draw-canvas" class="hidden"></canvas>
     </main>
   </div>
 
   <!-- Help Button -->
   <button id="help-btn">?</button>
 
+  <!-- ============================================================ -->
   <!-- Help Modal -->
+  <!-- ============================================================ -->
   <div id="help-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <button class="modal-close" id="help-close">&times;</button>
@@ -78,14 +99,346 @@
             <li>Upload a <strong>3D model</strong> to view it in the browser</li>
             <li>Upload a <strong>crack photo</strong> and click <em>Detect from Photo</em></li>
             <li>Or click <em>Scan Current View</em> to analyze the 3D model directly</li>
-            <li>Check your <strong>30-Day Report</strong> to track defects over time</li>
+            <li>Use <strong>Manual Draw Mode</strong> when AI detection is difficult</li>
+            <li>Run <strong>Full Evaluation</strong> to get repair estimates &amp; verdict</li>
+            <li>Use <strong>Calibrate Scale</strong> then <strong>Measure Depth</strong> for real-world dimensions from your CAD model</li>
           </ul>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- ============================================================ -->
+  <!-- Evaluation Modal -->
+  <!-- ============================================================ -->
+  <div id="eval-modal" class="modal-overlay hidden">
+    <div class="modal-box modal-xl">
+      <button class="modal-close" id="eval-close">&times;</button>
+      <h2>📋 Crack Evaluation Report</h2>
+
+      <!-- Detection selector -->
+      <div class="eval-section">
+        <label>Evaluating detection:</label>
+        <select id="eval-det-select"></select>
+      </div>
+
+      <div class="eval-grid">
+        <!-- Left column — classification -->
+        <div class="eval-col">
+          <h3 class="eval-heading">Classification</h3>
+
+          <label>Structural Location</label>
+          <select id="eval-location">
+            <option value="">-- Select --</option>
+            <option value="beam">Beam</option>
+            <option value="column">Column</option>
+            <option value="slab">Slab / Floor</option>
+            <option value="wall">Wall</option>
+            <option value="foundation">Foundation / Footing</option>
+            <option value="retaining_wall">Retaining Wall</option>
+            <option value="dam_face">Dam / Reservoir Face</option>
+            <option value="spillway">Spillway</option>
+            <option value="tunnel">Tunnel / Underground</option>
+            <option value="bridge_deck">Bridge Deck</option>
+            <option value="parapet">Parapet / Balustrade</option>
+            <option value="other">Other</option>
+          </select>
+
+          <label>Material</label>
+          <select id="eval-material">
+            <option value="">-- Select --</option>
+            <option value="rc">Reinforced Concrete (RC)</option>
+            <option value="pcc">Plain / Unreinforced Concrete</option>
+            <option value="masonry">Masonry</option>
+            <option value="brick">Brick</option>
+            <option value="stone">Stone / Rubble</option>
+            <option value="steel">Steel</option>
+            <option value="timber">Timber</option>
+            <option value="prestressed">Prestressed Concrete</option>
+          </select>
+
+          <label>Crack Type</label>
+          <select id="eval-crack-type">
+            <option value="">-- Select --</option>
+            <option value="shear">Shear Crack (diagonal, ~45°)</option>
+            <option value="flexural">Flexural / Moment Crack (vertical)</option>
+            <option value="torsional">Torsional Crack (spiral)</option>
+            <option value="shrinkage">Shrinkage / Plastic Crack (random map)</option>
+            <option value="settlement">Differential Settlement Crack</option>
+            <option value="thermal">Thermal Expansion/Contraction</option>
+            <option value="corrosion">Corrosion-Induced (rust staining)</option>
+            <option value="fatigue">Fatigue Crack</option>
+            <option value="alkali">Alkali-Silica Reaction (ASR map)</option>
+            <option value="unknown">Unknown</option>
+          </select>
+
+          <label>Crack Activity</label>
+          <select id="eval-activity">
+            <option value="active">Active (still growing)</option>
+            <option value="dormant">Dormant (stable)</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+
+        <!-- Right column — dimensions -->
+        <div class="eval-col">
+          <h3 class="eval-heading">Dimensions</h3>
+
+          <label>Estimated Width (mm)</label>
+          <div class="input-row">
+            <input type="number" id="eval-width" placeholder="e.g. 0.3" min="0" step="0.01">
+            <span class="unit">mm</span>
+          </div>
+
+          <label>Estimated Depth (mm)
+            <span class="label-hint">(use Measure Depth in viewer for accuracy)</span>
+          </label>
+          <div class="input-row">
+            <input type="number" id="eval-depth" placeholder="e.g. 25" min="0" step="1">
+            <span class="unit">mm</span>
+            <button class="btn-inline" id="eval-use-depth-btn" title="Use last measured depth">Use Measured</button>
+          </div>
+
+          <label>Estimated Length (mm)
+            <span class="label-hint">(from bbox; calibrate scale for accuracy)</span>
+          </label>
+          <div class="input-row">
+            <input type="number" id="eval-length" placeholder="e.g. 300" min="0" step="1">
+            <span class="unit">mm</span>
+          </div>
+
+          <div class="vol-box" id="vol-display">
+            <div class="vol-row">
+              <span>Core Volume (L×W×D):</span>
+              <span id="vol-core">—</span>
+            </div>
+            <div class="vol-row">
+              <span>Repair Volume (+25% process):</span>
+              <span id="vol-repair">—</span>
+            </div>
+          </div>
+
+          <h3 class="eval-heading" style="margin-top:14px">Environment Risk</h3>
+          <label>
+            <input type="checkbox" id="eval-near-water"> Near water body / reservoir / dam
+          </label>
+          <label>
+            <input type="checkbox" id="eval-seismic"> Seismic zone
+          </label>
+          <label>
+            <input type="checkbox" id="eval-load-bearing"> Load-bearing element
+          </label>
+        </div>
+      </div>
+
+      <!-- Repair section -->
+      <div class="eval-section" style="margin-top:16px">
+        <h3 class="eval-heading">Repair Method</h3>
+        <div class="repair-grid">
+          <div>
+            <label>Suggested Repair</label>
+            <select id="eval-repair-method">
+              <option value="epoxy_injection">Epoxy Injection</option>
+              <option value="routing_sealing">Routing &amp; Sealing</option>
+              <option value="stitching">Crack Stitching (staples/dogs)</option>
+              <option value="overlay">Overlay / Resurfacing</option>
+              <option value="patching">Dry-Pack Patching</option>
+              <option value="grouting">Pressure Grouting</option>
+              <option value="carbon_wrap">CFRP / Carbon Fibre Wrap</option>
+              <option value="monitor">Monitor Only (no repair yet)</option>
+              <option value="demolish">Demolish &amp; Reconstruct</option>
+            </select>
+          </div>
+          <div>
+            <label>Unit Cost ($/litre or $/m depending on method)</label>
+            <div class="input-row">
+              <input type="number" id="eval-unit-cost" placeholder="e.g. 150" min="0" step="1">
+              <span class="unit" id="eval-cost-unit">$/L</span>
+            </div>
+          </div>
+        </div>
+
+        <label>Additional Notes</label>
+        <textarea id="eval-notes" rows="2" placeholder="e.g. Visible rebar corrosion, crack widens after rain..."></textarea>
+      </div>
+
+      <!-- Verdict -->
+      <div id="eval-verdict" class="verdict-box hidden">
+        <div id="verdict-badge" class="verdict-badge">—</div>
+        <div id="verdict-detail" class="verdict-detail"></div>
+        <div id="verdict-cost" class="verdict-cost"></div>
+      </div>
+
+      <div class="eval-actions">
+        <button id="eval-calc-btn" class="btn-calc">⚡ Calculate &amp; Assess</button>
+        <button id="eval-save-btn" class="btn-save">💾 Save to Report</button>
+        <button class="modal-close-btn" id="eval-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- Danger Reference Modal -->
+  <!-- ============================================================ -->
+  <div id="danger-modal" class="modal-overlay hidden">
+    <div class="modal-box modal-xl">
+      <button class="modal-close" id="danger-close">&times;</button>
+      <h2>⚠️ Crack Danger Reference Guide</h2>
+
+      <div class="danger-tabs">
+        <button class="dtab active" data-tab="severity">Severity Thresholds</button>
+        <button class="dtab" data-tab="types">Crack Types</button>
+        <button class="dtab" data-tab="reservoirs">Reservoirs &amp; Dams</button>
+        <button class="dtab" data-tab="standards">Standards</button>
+      </div>
+
+      <!-- Severity tab -->
+      <div class="dtab-content active" id="tab-severity">
+        <h3>Crack Width — Severity Classification</h3>
+        <table class="danger-table">
+          <thead><tr><th>Width</th><th>Class</th><th>Typical Action</th></tr></thead>
+          <tbody>
+            <tr class="sev-green"><td>&lt; 0.1 mm</td><td>Hairline</td><td>Monitor; cosmetic treatment only</td></tr>
+            <tr class="sev-yellow"><td>0.1 – 0.3 mm</td><td>Fine</td><td>Seal to prevent moisture ingress; reinspect in 6 months</td></tr>
+            <tr class="sev-orange"><td>0.3 – 1.0 mm</td><td>Medium</td><td>Epoxy injection or routing &amp; sealing; structural check</td></tr>
+            <tr class="sev-red"><td>1.0 – 5.0 mm</td><td>Wide</td><td>Structural investigation required; restrict loading</td></tr>
+            <tr class="sev-critical"><td>&gt; 5.0 mm</td><td>Very Wide</td><td>Immediate structural assessment; potential evacuation</td></tr>
+          </tbody>
+        </table>
+        <p class="danger-note">Reference: ACI 224R-01, EN 1992-1-1 (Eurocode 2), BS 8110</p>
+
+        <h3 style="margin-top:16px">Crack Depth — Risk Levels</h3>
+        <table class="danger-table">
+          <thead><tr><th>Depth</th><th>Risk</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr class="sev-green"><td>&lt; 20 mm</td><td>Surface / Cover</td><td>Likely within concrete cover; monitor for corrosion</td></tr>
+            <tr class="sev-yellow"><td>20 – 50 mm</td><td>Cover Penetrated</td><td>Rebar likely exposed; corrosion risk high</td></tr>
+            <tr class="sev-orange"><td>50 – 150 mm</td><td>Deep</td><td>Through-crack likely; waterproofing compromised</td></tr>
+            <tr class="sev-red"><td>&gt; 150 mm</td><td>Through-Section</td><td>Structural integrity severely compromised</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Types tab -->
+      <div class="dtab-content hidden" id="tab-types">
+        <div class="crack-type-grid">
+          <div class="crack-card sev-orange-border">
+            <h4>Shear Crack</h4>
+            <p>Diagonal (≈45°) near supports in beams/columns. Indicates shear force exceeds capacity. <strong>High structural risk</strong> — can cause sudden brittle failure.</p>
+            <span class="crack-tag red">Critical if widening</span>
+          </div>
+          <div class="crack-card sev-yellow-border">
+            <h4>Flexural / Moment Crack</h4>
+            <p>Vertical cracks at mid-span of beams or at base of columns. Indicates bending stress. Usually predictable; ductile failure mode.</p>
+            <span class="crack-tag orange">Moderate — monitor width</span>
+          </div>
+          <div class="crack-card sev-green-border">
+            <h4>Shrinkage Crack</h4>
+            <p>Random map-cracking during early curing. Usually shallow (&lt;20mm). Low structural risk unless pattern becomes systemic.</p>
+            <span class="crack-tag green">Low structural risk</span>
+          </div>
+          <div class="crack-card sev-red-border">
+            <h4>Corrosion-Induced Crack</h4>
+            <p>Longitudinal cracks along rebar line, rust staining. Steel expansion splits the cover. Progressive — will worsen without intervention.</p>
+            <span class="crack-tag red">High — repair urgently</span>
+          </div>
+          <div class="crack-card sev-orange-border">
+            <h4>Settlement Crack</h4>
+            <p>Diagonal or stepped cracks from differential foundation movement. Indicates ongoing settlement — active cracks are dangerous.</p>
+            <span class="crack-tag orange">Investigate foundation</span>
+          </div>
+          <div class="crack-card sev-yellow-border">
+            <h4>Thermal Crack</h4>
+            <p>Horizontal or vertical, regular spacing. Caused by thermal expansion/contraction cycles. Common in walls without expansion joints.</p>
+            <span class="crack-tag green">Usually low risk</span>
+          </div>
+          <div class="crack-card sev-red-border">
+            <h4>Torsional Crack</h4>
+            <p>Spiral or helical pattern around a member. Indicates torsional force exceeding capacity. Rare but very serious.</p>
+            <span class="crack-tag red">Critical</span>
+          </div>
+          <div class="crack-card sev-orange-border">
+            <h4>ASR (Alkali-Silica)</h4>
+            <p>Map/gel cracking with a white gel exudate. Internal chemical reaction — no cure, only management. Reduces long-term capacity.</p>
+            <span class="crack-tag orange">Requires specialist</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reservoirs tab -->
+      <div class="dtab-content hidden" id="tab-reservoirs">
+        <div class="reservoir-warning">
+          <span class="warn-icon">🚨</span>
+          <strong>Cracks in reservoir walls, dam faces, and spillways require IMMEDIATE specialist inspection. Do not rely solely on AI detection for life-safety decisions.</strong>
+        </div>
+
+        <h3>Reservoir &amp; Dam Crack Risks</h3>
+        <table class="danger-table">
+          <thead><tr><th>Location</th><th>Crack Type</th><th>Risk</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr class="sev-critical"><td>Dam Face (upstream)</td><td>Any through-crack</td><td>🔴 CRITICAL</td><td>Immediate drawdown; emergency inspection</td></tr>
+            <tr class="sev-red"><td>Dam Crest</td><td>Longitudinal crack</td><td>🔴 HIGH</td><td>Monitor settlement; geotechnical survey</td></tr>
+            <tr class="sev-red"><td>Spillway Slab</td><td>Transverse crack</td><td>🔴 HIGH</td><td>Risk of slab uplift under flow; restrict operation</td></tr>
+            <tr class="sev-orange"><td>Retaining Wall</td><td>Horizontal crack</td><td>🟠 HIGH</td><td>Check backfill pressure; possible shear failure</td></tr>
+            <tr class="sev-orange"><td>Outlet Works</td><td>Any crack</td><td>🟠 HIGH</td><td>Risk of internal erosion/piping; inspect</td></tr>
+            <tr class="sev-yellow"><td>Stilling Basin</td><td>Surface crack</td><td>🟡 MODERATE</td><td>Cavitation risk; seal before next operation</td></tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin-top:16px">Key Reference Standards for Water Structures</h3>
+        <ul class="ref-list">
+          <li><strong>ICOLD Bulletin 164</strong> — Inspection of Dams Following Earthquake</li>
+          <li><strong>ICOLD Bulletin 155</strong> — Dam Safety Management</li>
+          <li><strong>USBR Engineering Monograph 36</strong> — Concrete Crack Repair</li>
+          <li><strong>ACI 224.1R</strong> — Causes, Evaluation &amp; Repair of Cracks in Concrete Structures</li>
+          <li><strong>FERC Engineering Guidelines Ch. 11</strong> — Dam Safety (US)</li>
+          <li><strong>BS EN 1992-3</strong> — Liquid-Retaining &amp; Containment Structures</li>
+        </ul>
+
+        <h3 style="margin-top:16px">Piping / Internal Erosion Warning Signs</h3>
+        <ul class="warn-list">
+          <li>Crack accompanied by seepage or discoloured water</li>
+          <li>Sand boils or wet spots on downstream face</li>
+          <li>Sink holes or depressions on embankment crest</li>
+          <li>Increasing seepage flow over time</li>
+          <li>Any cracking + drawdown of water level &gt;300mm unexplained</li>
+        </ul>
+      </div>
+
+      <!-- Standards tab -->
+      <div class="dtab-content hidden" id="tab-standards">
+        <h3>Repair Decision Matrix</h3>
+        <table class="danger-table">
+          <thead><tr><th>Condition</th><th>Recommended Action</th></tr></thead>
+          <tbody>
+            <tr class="sev-green"><td>Dormant, &lt;0.3mm, non-structural</td><td>Monitor — reinspect 12 months</td></tr>
+            <tr class="sev-yellow"><td>Dormant, 0.3–1mm, non-structural</td><td>Seal with polyurethane or epoxy paste</td></tr>
+            <tr class="sev-orange"><td>Dormant, &gt;1mm, structural</td><td>Epoxy pressure injection; engineer sign-off</td></tr>
+            <tr class="sev-orange"><td>Active, any width, structural</td><td>Identify &amp; address cause first; then repair</td></tr>
+            <tr class="sev-red"><td>Shear or torsional, load-bearing</td><td>Restrict loading; structural upgrade (CFRP/stitching)</td></tr>
+            <tr class="sev-critical"><td>Through-crack, water-retaining</td><td>Take out of service; emergency repair or demolish</td></tr>
+            <tr class="sev-critical"><td>Corrosion + spalling, &gt;30% section loss</td><td>Demolish &amp; reconstruct</td></tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin-top:16px">Key Standards Referenced</h3>
+        <ul class="ref-list">
+          <li><strong>ACI 224R-01</strong> — Control of Cracking in Concrete Structures</li>
+          <li><strong>ACI 224.1R-07</strong> — Causes, Evaluation &amp; Repair of Cracks</li>
+          <li><strong>ACI 318</strong> — Building Code Requirements for Structural Concrete</li>
+          <li><strong>EN 1992-1-1 (Eurocode 2)</strong> — Design of Concrete Structures</li>
+          <li><strong>EN 1504</strong> — Products &amp; Systems for Concrete Repair</li>
+          <li><strong>BS 8110 / BS EN 13670</strong> — Structural Use of Concrete</li>
+          <li><strong>ICRI 310.2R</strong> — Selecting &amp; Specifying Concrete Surface Prep</li>
+          <li><strong>ASTM C881</strong> — Epoxy-Resin-Base Bonding Systems for Concrete</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
   <!-- 30-Day Report Modal -->
+  <!-- ============================================================ -->
   <div id="report-modal" class="modal-overlay hidden">
     <div class="modal-box modal-wide">
       <button class="modal-close" id="report-close">&times;</button>

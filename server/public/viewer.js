@@ -32,6 +32,19 @@ const clearOverlaysBtn = document.getElementById('clear-overlays-btn');
 const scanViewBtn = document.getElementById('scan-view-btn');
 const unloadModelBtn = document.getElementById('unload-model-btn');
 
+// New feature DOM refs
+const drawModeBtn    = document.getElementById('draw-mode-btn');
+const drawModeHint   = document.getElementById('draw-mode-hint');
+const drawCanvas     = document.getElementById('draw-canvas');
+const evaluateBtn    = document.getElementById('evaluate-btn');
+const dangerInfoBtn  = document.getElementById('danger-info-btn');
+const calibrateBtn   = document.getElementById('calibrate-btn');
+const measureDepthBtn= document.getElementById('measure-depth-btn');
+const measureStatus  = document.getElementById('measure-status');
+const depthResult    = document.getElementById('depth-result');
+const depthValue     = document.getElementById('depth-value');
+const resultsCount   = document.getElementById('results-count');
+
 // ============================================================
 // Part A: APS Viewer Initialization
 // ============================================================
@@ -88,6 +101,7 @@ function loadModel(urn) {
         viewer.loadDocumentNode(doc, defaultModel);
         modelIsLoaded = true;
         unloadModelBtn.disabled = false;
+        document.dispatchEvent(new Event('modelLoaded'));
         // Track the model name from the dropdown, or fall back to URN suffix
         const selectedOpt = modelSelect.options[modelSelect.selectedIndex];
         currentModelName = (selectedOpt && selectedOpt.dataset.objectKey)
@@ -266,9 +280,15 @@ function setStatus(el, message, type = 'info') {
   el.className = `status ${type}`;
 }
 
+// Global detections store (shared between AI and manual detections)
+let currentDetections = [];
+
 function showResults(detections) {
+  currentDetections = detections;
   resultsPanel.classList.remove('hidden');
   resultsList.innerHTML = '';
+  if (resultsCount) resultsCount.textContent = detections.length;
+
   if (detections.length === 0) {
     resultsList.innerHTML = '<div class="result-item">No defects detected</div>';
     return;
@@ -277,10 +297,12 @@ function showResults(detections) {
     const severity = det.confidence > 0.7 ? 'high' : det.confidence > 0.4 ? 'medium' : 'low';
     const item = document.createElement('div');
     item.className = 'result-item';
+    item.dataset.index = i;
     item.innerHTML = `
-      <span>#${i + 1} ${det.class}</span>
-      <span class="conf ${severity}">${(det.confidence * 100).toFixed(1)}%</span>
+      <span>#${i + 1} ${det.class}${det.manual ? ' ✏️' : ''}</span>
+      <span class="conf ${severity}">${det.manual ? 'manual' : (det.confidence * 100).toFixed(1) + '%'}</span>
     `;
+    item.addEventListener('click', () => openEvalModal(i));
     resultsList.appendChild(item);
   });
 }
@@ -707,6 +729,531 @@ reportClearBtn.addEventListener('click', () => {
 });
 
 // ============================================================
+// APS Measurement — Calibration & Depth
+// ============================================================
+
+let mmPerPx = null;          // calibration: real-world mm per screen pixel
+let lastMeasuredDepth = null; // last depth measurement in mm from hitTest
+let measureMode = null;       // 'calibrate' | 'depth' | null
+let measurePoints = [];       // collected {x,y,world} points for current measure op
+
+function enableMeasureButtons() {
+  if (viewer && modelIsLoaded) {
+    calibrateBtn.disabled = false;
+    measureDepthBtn.disabled = false;
+  }
+}
+
+function setMeasureMode(mode) {
+  measureMode = mode;
+  measurePoints = [];
+  if (mode) {
+    calibrateBtn.classList.toggle('active-tool', mode === 'calibrate');
+    measureDepthBtn.classList.toggle('active-tool', mode === 'depth');
+    setStatus(measureStatus, mode === 'calibrate'
+      ? 'Click two known points on the model…'
+      : 'Click first surface point…', 'info');
+    measureStatus.classList.remove('hidden');
+    viewerContainer.style.cursor = 'crosshair';
+  } else {
+    calibrateBtn.classList.remove('active-tool');
+    measureDepthBtn.classList.remove('active-tool');
+    measureStatus.classList.add('hidden');
+    viewerContainer.style.cursor = '';
+  }
+}
+
+calibrateBtn.addEventListener('click', () => {
+  if (measureMode === 'calibrate') { setMeasureMode(null); return; }
+  setMeasureMode('calibrate');
+});
+
+measureDepthBtn.addEventListener('click', () => {
+  if (measureMode === 'depth') { setMeasureMode(null); return; }
+  setMeasureMode('depth');
+});
+
+// Listen for clicks on the viewer container during measure mode
+viewerContainer.addEventListener('click', (e) => {
+  if (!measureMode || !viewer || !modelIsLoaded) return;
+
+  // Get coords relative to viewer container
+  const rect = viewerContainer.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  // Use APS hitTest to get world-space 3D coordinates
+  const hitResult = viewer.impl.hitTest(cx, cy, false);
+  const worldPt = hitResult ? hitResult.point : null;
+
+  measurePoints.push({ x: cx, y: cy, world: worldPt });
+
+  if (measureMode === 'calibrate' && measurePoints.length === 2) {
+    const dx = measurePoints[1].x - measurePoints[0].x;
+    const dy = measurePoints[1].y - measurePoints[0].y;
+    const pxDist = Math.sqrt(dx * dx + dy * dy);
+    const realMm = parseFloat(prompt(`Distance between those two points (mm)?\n(e.g. enter 1000 for 1 metre)`));
+    if (!isNaN(realMm) && realMm > 0 && pxDist > 0) {
+      mmPerPx = realMm / pxDist;
+      const calStatus = document.getElementById('calibration-status');
+      calStatus.textContent = `✅ Calibrated: 1px = ${mmPerPx.toFixed(3)} mm`;
+      calStatus.className = 'status success';
+    }
+    setMeasureMode(null);
+
+  } else if (measureMode === 'depth' && measurePoints.length === 1) {
+    setStatus(measureStatus, 'Click second surface point…', 'info');
+
+  } else if (measureMode === 'depth' && measurePoints.length === 2) {
+    const p1 = measurePoints[0];
+    const p2 = measurePoints[1];
+    let depthMm = null;
+
+    // If both hitTest points available, use 3D world distance
+    if (p1.world && p2.world) {
+      const unitScale = viewer.model ? viewer.model.getUnitScale() : 1; // model units → metres
+      const dx3 = p2.world.x - p1.world.x;
+      const dy3 = p2.world.y - p1.world.y;
+      const dz3 = p2.world.z - p1.world.z;
+      const dist3D = Math.sqrt(dx3 * dx3 + dy3 * dy3 + dz3 * dz3);
+      depthMm = dist3D * unitScale * 1000; // metres → mm
+    } else if (mmPerPx) {
+      // Fallback: 2D screen distance × calibration
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      depthMm = Math.sqrt(dx * dx + dy * dy) * mmPerPx;
+    }
+
+    if (depthMm !== null) {
+      lastMeasuredDepth = Math.round(depthMm * 10) / 10;
+      depthValue.textContent = `${lastMeasuredDepth} mm`;
+      depthResult.classList.remove('hidden');
+      setStatus(measureStatus, `Depth measured: ${lastMeasuredDepth} mm`, 'success');
+    } else {
+      setStatus(measureStatus, 'HitTest failed — calibrate scale first', 'error');
+    }
+    setMeasureMode(null);
+  }
+});
+
+// ============================================================
+// Manual Draw Mode
+// ============================================================
+
+let isDrawMode = false;
+let drawStart = null;
+const drawCtx = drawCanvas.getContext('2d');
+
+function enterDrawMode() {
+  isDrawMode = true;
+  drawModeBtn.classList.add('active-tool');
+  drawModeBtn.textContent = '✏️ Drawing Mode ON';
+  drawModeHint.classList.remove('hidden');
+
+  // Size draw canvas to match main area
+  const rect = document.getElementById('main-area').getBoundingClientRect();
+  drawCanvas.width = rect.width;
+  drawCanvas.height = rect.height;
+  drawCanvas.classList.remove('hidden');
+}
+
+function exitDrawMode() {
+  isDrawMode = false;
+  drawModeBtn.classList.remove('active-tool');
+  drawModeBtn.textContent = '✏️ Manual Draw Mode';
+  drawModeHint.classList.add('hidden');
+  drawCanvas.classList.add('hidden');
+  drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+}
+
+drawModeBtn.addEventListener('click', () => {
+  if (isDrawMode) exitDrawMode();
+  else enterDrawMode();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && isDrawMode) exitDrawMode();
+});
+
+drawCanvas.addEventListener('mousedown', (e) => {
+  if (!isDrawMode) return;
+  const rect = drawCanvas.getBoundingClientRect();
+  drawStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+});
+
+drawCanvas.addEventListener('mousemove', (e) => {
+  if (!isDrawMode || !drawStart) return;
+  const rect = drawCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  drawCtx.strokeStyle = '#ffaa00';
+  drawCtx.lineWidth = 2;
+  drawCtx.setLineDash([6, 3]);
+  drawCtx.strokeRect(drawStart.x, drawStart.y, mx - drawStart.x, my - drawStart.y);
+  drawCtx.fillStyle = 'rgba(255,170,0,0.08)';
+  drawCtx.fillRect(drawStart.x, drawStart.y, mx - drawStart.x, my - drawStart.y);
+});
+
+drawCanvas.addEventListener('mouseup', (e) => {
+  if (!isDrawMode || !drawStart) return;
+  const rect = drawCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const x1 = Math.min(drawStart.x, mx);
+  const y1 = Math.min(drawStart.y, my);
+  const x2 = Math.max(drawStart.x, mx);
+  const y2 = Math.max(drawStart.y, my);
+  drawStart = null;
+
+  if (x2 - x1 < 10 || y2 - y1 < 10) {
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    return;
+  }
+
+  // Show mini classification dialog
+  showManualDetectDialog(x1, y1, x2, y2, rect.width, rect.height);
+});
+
+function showManualDetectDialog(x1, y1, x2, y2, canvasW, canvasH) {
+  // Create a lightweight inline dialog
+  const existing = document.getElementById('manual-dialog');
+  if (existing) existing.remove();
+
+  const dlg = document.createElement('div');
+  dlg.id = 'manual-dialog';
+  dlg.style.cssText = `
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:#16213e; border:1px solid #e94560; border-radius:10px;
+    padding:20px; z-index:3000; width:300px; box-shadow:0 8px 32px rgba(0,0,0,0.6);
+    font-size:0.85rem; color:#e0e0e0;
+  `;
+  dlg.innerHTML = `
+    <h3 style="color:#e94560;margin-bottom:12px">✏️ Classify Manual Detection</h3>
+    <label style="display:block;margin-bottom:4px;color:#a0a0c0">Crack Type</label>
+    <select id="md-type" style="width:100%;margin-bottom:10px;padding:6px;background:#0f3460;color:#e0e0e0;border:1px solid #533483;border-radius:4px">
+      <option value="shear">Shear Crack</option>
+      <option value="flexural">Flexural / Moment Crack</option>
+      <option value="shrinkage">Shrinkage Crack</option>
+      <option value="settlement">Settlement Crack</option>
+      <option value="corrosion">Corrosion-Induced</option>
+      <option value="thermal">Thermal Crack</option>
+      <option value="crack" selected>General Crack</option>
+      <option value="unknown">Unknown</option>
+    </select>
+    <label style="display:block;margin-bottom:4px;color:#a0a0c0">Estimated Width (mm)</label>
+    <input type="number" id="md-width" placeholder="e.g. 0.5" style="width:100%;margin-bottom:10px;padding:6px;background:#0f3460;color:#e0e0e0;border:1px solid #533483;border-radius:4px" step="0.1" min="0">
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button id="md-confirm" style="flex:2;padding:8px;background:#e94560;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600">Add Detection</button>
+      <button id="md-cancel" style="flex:1;padding:8px;background:#333;color:#e0e0e0;border:none;border-radius:4px;cursor:pointer">Cancel</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  document.getElementById('md-cancel').addEventListener('click', () => {
+    dlg.remove();
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  });
+
+  document.getElementById('md-confirm').addEventListener('click', () => {
+    const crackType = document.getElementById('md-type').value;
+    const width = parseFloat(document.getElementById('md-width').value) || null;
+
+    const newDet = {
+      bbox: [x1, y1, x2, y2],
+      confidence: 1.0,
+      class: crackType,
+      mask_polygon: [],
+      manual: true,
+      estimated_width_mm: width,
+    };
+
+    const merged = [...currentDetections, newDet];
+    showResults(merged);
+    saveInspectionEntry(merged);
+
+    // Draw permanent box on draw canvas
+    drawCtx.setLineDash([]);
+    drawCtx.strokeStyle = '#ffaa00';
+    drawCtx.lineWidth = 2;
+    drawCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    drawCtx.font = 'bold 12px sans-serif';
+    drawCtx.fillStyle = '#ffaa00';
+    drawCtx.fillRect(x1, y1 > 20 ? y1 - 20 : y1, ctx.measureText(crackType).width + 12, 18);
+    drawCtx.fillStyle = '#000';
+    drawCtx.fillText(crackType, x1 + 4, y1 > 20 ? y1 - 5 : y1 + 14);
+
+    dlg.remove();
+    exitDrawMode();
+    // Auto-open evaluation for the new detection
+    openEvalModal(merged.length - 1);
+  });
+}
+
+// ============================================================
+// Crack Evaluation Modal
+// ============================================================
+
+const evalModal    = document.getElementById('eval-modal');
+const evalClose    = document.getElementById('eval-close');
+const evalCancel   = document.getElementById('eval-cancel');
+const evalCalcBtn  = document.getElementById('eval-calc-btn');
+const evalSaveBtn  = document.getElementById('eval-save-btn');
+const evalDetSelect= document.getElementById('eval-det-select');
+const evalUseDepth = document.getElementById('eval-use-depth-btn');
+const evalVerdict  = document.getElementById('eval-verdict');
+const verdictBadge = document.getElementById('verdict-badge');
+const verdictDetail= document.getElementById('verdict-detail');
+const verdictCost  = document.getElementById('verdict-cost');
+
+const REPAIR_UNIT_DEFAULTS = {
+  epoxy_injection: { cost: 150, unit: '$/L' },
+  routing_sealing: { cost: 60,  unit: '$/m' },
+  stitching:       { cost: 250, unit: '$/m' },
+  overlay:         { cost: 80,  unit: '$/m²' },
+  patching:        { cost: 120, unit: '$/L' },
+  grouting:        { cost: 200, unit: '$/L' },
+  carbon_wrap:     { cost: 400, unit: '$/m' },
+  monitor:         { cost: 0,   unit: '—' },
+  demolish:        { cost: 2000,unit: '$/m²' },
+};
+
+function suggestRepair(crackType, widthMm, depthMm, material, nearWater, loadBearing) {
+  const w = widthMm || 0;
+  const d = depthMm || 0;
+  if (nearWater && d > 30) return 'grouting';
+  if (crackType === 'corrosion' || (d > 50 && loadBearing)) return 'carbon_wrap';
+  if (crackType === 'shear' || crackType === 'torsional') return loadBearing ? 'carbon_wrap' : 'stitching';
+  if (w > 5 || d > 150) return 'demolish';
+  if (w > 1 && loadBearing) return 'epoxy_injection';
+  if (w > 1) return 'routing_sealing';
+  if (w > 0.3) return 'epoxy_injection';
+  if (crackType === 'shrinkage' || crackType === 'thermal') return w < 0.1 ? 'monitor' : 'routing_sealing';
+  return 'monitor';
+}
+
+function calcVerdict(crackType, widthMm, depthMm, nearWater, seismic, loadBearing, activity) {
+  const w = widthMm || 0;
+  const d = depthMm || 0;
+
+  // Immediate demolish conditions
+  if (w > 10 || d > 200) return { verdict: 'DEMOLISH', reason: 'Crack dimensions exceed safe repair thresholds.' };
+  if (crackType === 'shear' && loadBearing && activity === 'active') return { verdict: 'DEMOLISH', reason: 'Active shear crack in load-bearing element — brittle failure risk.' };
+  if (nearWater && d > 100 && crackType !== 'shrinkage') return { verdict: 'DEMOLISH', reason: 'Deep through-crack in water-retaining structure.' };
+
+  // Monitor only
+  if (!loadBearing && w < 0.1 && activity !== 'active') return { verdict: 'MONITOR', reason: 'Hairline crack in non-structural element. Low risk — monitor quarterly.' };
+  if (crackType === 'shrinkage' && w < 0.3 && !nearWater) return { verdict: 'MONITOR', reason: 'Shallow shrinkage cracking. Seal if moisture ingress is a concern.' };
+
+  // Default: repair
+  let reason = '';
+  if (w > 1) reason += 'Wide crack (>1mm) requires injection or structural repair. ';
+  if (d > 50) reason += 'Deep crack penetrates structural section. ';
+  if (nearWater) reason += '⚠️ Water proximity — waterproofing critical. ';
+  if (seismic) reason += '⚠️ Seismic zone — check code compliance. ';
+  if (activity === 'active') reason += '⚠️ Active crack — identify and fix root cause before repairing. ';
+  return { verdict: 'REPAIR', reason: reason || 'Crack requires sealing/injection to prevent deterioration.' };
+}
+
+function openEvalModal(detIndex = 0) {
+  if (currentDetections.length === 0) return;
+
+  // Populate detection dropdown
+  evalDetSelect.innerHTML = '';
+  currentDetections.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `#${i + 1} — ${d.class}${d.manual ? ' (manual)' : ` (${(d.confidence * 100).toFixed(0)}%)`}`;
+    evalDetSelect.appendChild(opt);
+  });
+  evalDetSelect.value = detIndex;
+
+  // Pre-fill width from manual detection if available
+  const det = currentDetections[detIndex];
+  if (det && det.estimated_width_mm) {
+    document.getElementById('eval-width').value = det.estimated_width_mm;
+  }
+
+  // Auto-suggest crack type in dropdown
+  const crackTypeMap = { shear:'shear', flexural:'flexural', shrinkage:'shrinkage', corrosion:'corrosion', settlement:'settlement', thermal:'thermal' };
+  const suggested = crackTypeMap[det && det.class] || '';
+  if (suggested) document.getElementById('eval-crack-type').value = suggested;
+
+  // Auto-suggest bbox length from calibration
+  if (mmPerPx && det) {
+    const [x1,y1,x2,y2] = det.bbox;
+    const bboxLengthPx = Math.max(x2-x1, y2-y1);
+    document.getElementById('eval-length').value = Math.round(bboxLengthPx * mmPerPx);
+  }
+
+  evalVerdict.classList.add('hidden');
+  evalModal.classList.remove('hidden');
+}
+
+// When selected detection changes, update width pre-fill
+evalDetSelect.addEventListener('change', () => {
+  const i = parseInt(evalDetSelect.value);
+  const det = currentDetections[i];
+  if (det && det.estimated_width_mm) document.getElementById('eval-width').value = det.estimated_width_mm;
+});
+
+// Volume auto-calc on input change
+['eval-width','eval-depth','eval-length'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateVolumeDisplay);
+});
+
+function updateVolumeDisplay() {
+  const w = parseFloat(document.getElementById('eval-width').value) || 0;
+  const d = parseFloat(document.getElementById('eval-depth').value) || 0;
+  const l = parseFloat(document.getElementById('eval-length').value) || 0;
+  if (w && d && l) {
+    const core   = (w * d * l) / 1e6; // mm³ → cm³
+    const repair = core * 1.25;
+    document.getElementById('vol-core').textContent   = core.toFixed(4)   + ' cm³';
+    document.getElementById('vol-repair').textContent = repair.toFixed(4) + ' cm³';
+  } else {
+    document.getElementById('vol-core').textContent   = '—';
+    document.getElementById('vol-repair').textContent = '—';
+  }
+}
+
+// Repair method change → update unit cost default
+document.getElementById('eval-repair-method').addEventListener('change', () => {
+  const method = document.getElementById('eval-repair-method').value;
+  const def = REPAIR_UNIT_DEFAULTS[method];
+  if (def) {
+    document.getElementById('eval-unit-cost').value = def.cost;
+    document.getElementById('eval-cost-unit').textContent = def.unit;
+  }
+});
+
+// "Use Measured" depth button
+evalUseDepth.addEventListener('click', () => {
+  if (lastMeasuredDepth !== null) {
+    document.getElementById('eval-depth').value = lastMeasuredDepth;
+    updateVolumeDisplay();
+  } else {
+    alert('No depth measurement yet. Use "Measure Depth (2 pts)" with the model loaded first.');
+  }
+});
+
+// Auto-suggest repair on Calculate
+evalCalcBtn.addEventListener('click', () => {
+  const crackType  = document.getElementById('eval-crack-type').value;
+  const material   = document.getElementById('eval-material').value;
+  const location   = document.getElementById('eval-location').value;
+  const activity   = document.getElementById('eval-activity').value;
+  const w = parseFloat(document.getElementById('eval-width').value)  || 0;
+  const d = parseFloat(document.getElementById('eval-depth').value)  || 0;
+  const l = parseFloat(document.getElementById('eval-length').value) || 0;
+  const nearWater  = document.getElementById('eval-near-water').checked;
+  const seismic    = document.getElementById('eval-seismic').checked;
+  const loadBearing= document.getElementById('eval-load-bearing').checked;
+
+  // Auto-suggest repair
+  const suggestedRepair = suggestRepair(crackType, w, d, material, nearWater, loadBearing);
+  document.getElementById('eval-repair-method').value = suggestedRepair;
+  const def = REPAIR_UNIT_DEFAULTS[suggestedRepair];
+  document.getElementById('eval-unit-cost').value = def.cost;
+  document.getElementById('eval-cost-unit').textContent = def.unit;
+
+  updateVolumeDisplay();
+
+  // Verdict
+  const { verdict, reason } = calcVerdict(crackType, w, d, nearWater, seismic, loadBearing, activity);
+
+  // Cost estimate
+  let costText = '';
+  const unitCost = parseFloat(document.getElementById('eval-unit-cost').value) || 0;
+  if (unitCost > 0 && verdict !== 'MONITOR') {
+    if (def.unit === '$/L') {
+      const vol = (w * d * l / 1e6) * 1.25; // cm³
+      const litres = vol / 1000;
+      const cost = litres * unitCost;
+      costText = `Est. cost: ~$${cost.toFixed(2)} (${litres.toFixed(4)} L × $${unitCost}/L)`;
+    } else if (def.unit === '$/m') {
+      const metres = l / 1000;
+      const cost = metres * unitCost;
+      costText = `Est. cost: ~$${cost.toFixed(2)} (${metres.toFixed(3)} m × $${unitCost}/m)`;
+    } else if (def.unit === '$/m²') {
+      const m2 = (l / 1000) * (w / 1000);
+      const cost = m2 * unitCost;
+      costText = `Est. cost: ~$${cost.toFixed(2)} (${m2.toFixed(4)} m² × $${unitCost}/m²)`;
+    }
+  }
+
+  evalVerdict.className = `verdict-box ${verdict.toLowerCase()}`;
+  verdictBadge.textContent  = verdict;
+  verdictDetail.textContent = reason;
+  verdictCost.textContent   = costText;
+  evalVerdict.classList.remove('hidden');
+});
+
+// Save evaluation to report
+evalSaveBtn.addEventListener('click', () => {
+  const i = parseInt(evalDetSelect.value);
+  const det = currentDetections[i];
+  const evalData = {
+    location:    document.getElementById('eval-location').value,
+    material:    document.getElementById('eval-material').value,
+    crackType:   document.getElementById('eval-crack-type').value,
+    activity:    document.getElementById('eval-activity').value,
+    widthMm:     parseFloat(document.getElementById('eval-width').value)  || null,
+    depthMm:     parseFloat(document.getElementById('eval-depth').value)  || null,
+    lengthMm:    parseFloat(document.getElementById('eval-length').value) || null,
+    repair:      document.getElementById('eval-repair-method').value,
+    notes:       document.getElementById('eval-notes').value,
+    verdict:     verdictBadge.textContent,
+    costEstimate:verdictCost.textContent,
+    nearWater:   document.getElementById('eval-near-water').checked,
+    seismic:     document.getElementById('eval-seismic').checked,
+    loadBearing: document.getElementById('eval-load-bearing').checked,
+  };
+
+  // Attach to detection
+  if (det) det.evaluation = evalData;
+
+  // Persist evaluation in log
+  const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  if (log.length > 0) {
+    const last = log[log.length - 1];
+    if (last.detections && last.detections[i]) last.detections[i].evaluation = evalData;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(log));
+  }
+
+  evalModal.classList.add('hidden');
+  setStatus(detectStatus, `Evaluation saved — Verdict: ${evalData.verdict}`, 'success');
+});
+
+evalClose.addEventListener('click',  () => evalModal.classList.add('hidden'));
+evalCancel.addEventListener('click', () => evalModal.classList.add('hidden'));
+evalModal.addEventListener('click',  (e) => { if (e.target === evalModal) evalModal.classList.add('hidden'); });
+evaluateBtn.addEventListener('click',() => openEvalModal(0));
+
+// ============================================================
+// Danger Info Modal — Tab Switching
+// ============================================================
+
+const dangerModal = document.getElementById('danger-modal');
+const dangerClose = document.getElementById('danger-close');
+
+dangerInfoBtn.addEventListener('click', () => dangerModal.classList.remove('hidden'));
+dangerClose.addEventListener('click',   () => dangerModal.classList.add('hidden'));
+dangerModal.addEventListener('click', (e) => { if (e.target === dangerModal) dangerModal.classList.add('hidden'); });
+
+document.querySelectorAll('.dtab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dtab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.dtab-content').forEach(c => { c.classList.remove('active'); c.classList.add('hidden'); });
+    btn.classList.add('active');
+    const target = document.getElementById(`tab-${btn.dataset.tab}`);
+    if (target) { target.classList.remove('hidden'); target.classList.add('active'); }
+  });
+});
+
+// ============================================================
 // Initialize on page load
 // ============================================================
 
@@ -714,3 +1261,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   await initViewer();
   refreshModelList();
 });
+
+// Enable measurement buttons when model loads (called from loadModel success callback)
+const _origLoadModel = loadModel;
+// Patch: after loadModel resolves, enable measure buttons
+// (already handled inside loadModel via modelIsLoaded = true; add explicit call here)
+document.addEventListener('modelLoaded', enableMeasureButtons);
