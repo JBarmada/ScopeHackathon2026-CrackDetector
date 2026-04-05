@@ -6,6 +6,7 @@ let viewer = null;
 let crackOverlay = null;
 let currentMode = 'viewer'; // 'viewer' or 'canvas'
 let modelIsLoaded = false; // true only after a 3D model is loaded in the viewer
+let currentModelName = null; // name of the currently loaded model
 
 // --- DOM Elements ---
 const viewerContainer = document.getElementById('viewer-container');
@@ -87,6 +88,11 @@ function loadModel(urn) {
         viewer.loadDocumentNode(doc, defaultModel);
         modelIsLoaded = true;
         unloadModelBtn.disabled = false;
+        // Track the model name from the dropdown, or fall back to URN suffix
+        const selectedOpt = modelSelect.options[modelSelect.selectedIndex];
+        currentModelName = (selectedOpt && selectedOpt.dataset.objectKey)
+          ? selectedOpt.dataset.objectKey
+          : urn.slice(-12);
         resolve();
       },
       (errorCode, errorMsg) => {
@@ -307,7 +313,21 @@ uploadModelBtn.addEventListener('click', async () => {
   }
 });
 
+const CRACK_JOKES = [
+  "Analyzing your crack... professionally, of course.",
+  "Finding cracks so you don't fall through them.",
+  "Every crack tells a story. Let's read yours.",
+  "Crack detection in progress... no, not that kind.",
+  "Inspecting the situation... it's getting pretty deep.",
+  "Your model is being thoroughly examined by Jad.",
+  "We've seen worse cracks. Maybe.",
+  "Processing... this might take a minute. Go touch grass.",
+  "Running AI on your structure. The building is nervous.",
+  "Translating model... Jad is on the case.",
+];
+
 async function pollTranslation(urn) {
+  let jokeIndex = 0;
   const poll = setInterval(async () => {
     try {
       const resp = await fetch(`/api/models/${encodeURIComponent(urn)}/status`);
@@ -315,7 +335,7 @@ async function pollTranslation(urn) {
 
       if (data.status === 'success') {
         clearInterval(poll);
-        setStatus(modelStatus, 'Translation complete!', 'success');
+        setStatus(modelStatus, 'Translation complete! Loading model...', 'success');
         uploadModelBtn.disabled = false;
         refreshModelList();
         await loadModel(urn);
@@ -324,7 +344,9 @@ async function pollTranslation(urn) {
         setStatus(modelStatus, 'Translation failed', 'error');
         uploadModelBtn.disabled = false;
       } else {
-        setStatus(modelStatus, `Translating... ${data.progress || ''}`, 'info');
+        const joke = CRACK_JOKES[jokeIndex % CRACK_JOKES.length];
+        jokeIndex++;
+        setStatus(modelStatus, `⏳ ${joke} ${data.progress ? `(${data.progress})` : ''}`, 'info');
       }
     } catch (err) {
       clearInterval(poll);
@@ -486,6 +508,7 @@ unloadModelBtn.addEventListener('click', () => {
     viewer.unloadModel(viewer.model);
   }
   modelIsLoaded = false;
+  currentModelName = null;
   unloadModelBtn.disabled = true;
   if (crackOverlay) crackOverlay.clearDetections();
   setStatus(modelStatus, 'Model unloaded', 'info');
@@ -583,6 +606,7 @@ function saveInspectionEntry(detections) {
   const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   log.push({
     timestamp: Date.now(),
+    model: currentModelName || 'No model (photo only)',
     count: detections.length,
     detections: detections.map((d) => ({
       class: d.class,
@@ -592,43 +616,78 @@ function saveInspectionEntry(detections) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(log));
 }
 
-function renderReport() {
+function renderReport(filterModel = 'all') {
   const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   const content = document.getElementById('report-content');
 
   if (log.length === 0) {
-    content.innerHTML = '<p style="color:#a0a0c0;text-align:center;padding:20px">No inspections recorded yet.</p>';
+    content.innerHTML = '<p style="color:#a0a0c0;text-align:center;padding:20px">No inspections recorded yet.<br>Run a detection to start tracking!</p>';
     return;
   }
 
-  // Group by calendar day
-  const byDay = {};
-  log.forEach((entry) => {
-    const day = new Date(entry.timestamp).toLocaleDateString('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-    });
-    if (!byDay[day]) byDay[day] = [];
-    byDay[day].push(entry);
-  });
+  // Build model filter dropdown
+  const allModels = [...new Set(log.map((e) => e.model || 'No model (photo only)'))];
+  const filterHtml = `
+    <div style="margin-bottom:14px">
+      <label style="font-size:0.8rem;color:#a0a0c0;display:block;margin-bottom:4px">Filter by model:</label>
+      <select id="report-filter" style="width:100%;padding:6px 8px;background:#0f3460;color:#e0e0e0;border:1px solid #533483;border-radius:4px;font-size:0.85rem">
+        <option value="all" ${filterModel === 'all' ? 'selected' : ''}>All models</option>
+        ${allModels.map((m) => `<option value="${m}" ${filterModel === m ? 'selected' : ''}>${m}</option>`).join('')}
+      </select>
+    </div>
+  `;
 
-  const days = Object.keys(byDay);
+  // Apply filter
+  const filtered = filterModel === 'all' ? log : log.filter((e) => (e.model || 'No model (photo only)') === filterModel);
+
+  if (filtered.length === 0) {
+    content.innerHTML = filterHtml + '<p style="color:#a0a0c0;text-align:center;padding:20px">No scans for this model yet.</p>';
+    document.getElementById('report-filter').addEventListener('change', (e) => renderReport(e.target.value));
+    return;
+  }
+
   const startDate = new Date(log[0].timestamp);
+  const totalDefects = filtered.reduce((sum, e) => sum + e.count, 0);
+  const totalScans = filtered.length;
 
-  content.innerHTML = days.map((day, i) => {
-    const entries = byDay[day];
-    const totalCracks = entries.reduce((sum, e) => sum + e.count, 0);
-    const dayNum = Math.floor((new Date(entries[0].timestamp) - startDate) / 86400000) + 1;
-    const countClass = totalCracks === 0 ? 'zero' : totalCracks <= 2 ? 'low' : 'high';
-    const scans = entries.length;
+  const summary = `
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <div style="flex:1;background:#1a1a2e;border-radius:8px;padding:12px;text-align:center;border:1px solid #0f3460">
+        <div style="font-size:1.6rem;font-weight:bold;color:#e94560">${totalScans}</div>
+        <div style="font-size:0.75rem;color:#a0a0c0">Scans</div>
+      </div>
+      <div style="flex:1;background:#1a1a2e;border-radius:8px;padding:12px;text-align:center;border:1px solid #0f3460">
+        <div style="font-size:1.6rem;font-weight:bold;color:#ff3030">${totalDefects}</div>
+        <div style="font-size:0.75rem;color:#a0a0c0">Defects</div>
+      </div>
+      <div style="flex:1;background:#1a1a2e;border-radius:8px;padding:12px;text-align:center;border:1px solid #0f3460">
+        <div style="font-size:1.6rem;font-weight:bold;color:#ffaa00">${Math.ceil((Date.now() - startDate) / 86400000)}</div>
+        <div style="font-size:0.75rem;color:#a0a0c0">Days Active</div>
+      </div>
+    </div>
+  `;
+
+  const entries = [...filtered].reverse().map((entry) => {
+    const date = new Date(entry.timestamp);
+    const dayNum = Math.floor((date - startDate) / 86400000) + 1;
+    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const countClass = entry.count === 0 ? 'zero' : entry.count <= 2 ? 'low' : 'high';
+    const modelTag = filterModel === 'all'
+      ? `<span style="font-size:0.7rem;color:#533483;margin-left:6px">${entry.model || 'photo only'}</span>`
+      : '';
     return `
       <div class="report-day">
-        <div class="report-date">Day ${dayNum} — ${day} &nbsp;·&nbsp; ${scans} scan${scans !== 1 ? 's' : ''}</div>
+        <div class="report-date">Day ${dayNum} — ${dateStr} at ${timeStr}${modelTag}</div>
         <div class="report-count ${countClass}">
-          ${totalCracks === 0 ? 'No defects found' : `${totalCracks} defect${totalCracks !== 1 ? 's' : ''} detected`}
+          ${entry.count === 0 ? 'No defects found' : `${entry.count} defect${entry.count !== 1 ? 's' : ''} detected`}
         </div>
       </div>
     `;
   }).join('');
+
+  content.innerHTML = filterHtml + summary + entries;
+  document.getElementById('report-filter').addEventListener('change', (e) => renderReport(e.target.value));
 }
 
 const reportBtn = document.getElementById('report-btn');

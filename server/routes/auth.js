@@ -61,6 +61,7 @@ async function getInternalToken() {
 
   const result = await authClient.getTwoLeggedToken(clientId, clientSecret, [
     Scopes.DataRead,
+    Scopes.DataWrite,
     Scopes.DataCreate,
     Scopes.BucketCreate,
     Scopes.ViewablesRead,

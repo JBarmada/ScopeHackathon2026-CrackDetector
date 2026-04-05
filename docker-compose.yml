@@ -20,7 +20,7 @@ services:
     volumes:
       - ./models:/app/models
     environment:
-      - MODEL_PATH=/app/models/crack-yolov8s.pt
+      - MODEL_PATH=/app/models/crack-yolov8l.pt
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
