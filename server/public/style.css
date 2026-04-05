@@ -122,6 +122,22 @@ button:disabled {
   background: #1a4a80;
 }
 
+#delete-model-btn {
+  background: #4a1a1a;
+}
+
+#delete-model-btn:hover:not(:disabled) {
+  background: #6a2a2a;
+}
+
+#unload-model-btn {
+  background: #2a2a4a;
+}
+
+#unload-model-btn:hover:not(:disabled) {
+  background: #3a3a6a;
+}
+
 .upload-group {
   margin-bottom: 8px;
 }
@@ -212,3 +228,148 @@ button:disabled {
 .result-item .conf.high { color: #ff3030; }
 .result-item .conf.medium { color: #ffaa00; }
 .result-item .conf.low { color: #30ff30; }
+
+/* Help button */
+#help-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e94560;
+  color: white;
+  font-size: 1.4rem;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  transition: transform 0.2s, background 0.2s;
+}
+
+#help-btn:hover { background: #c73050; transform: scale(1.1); }
+
+/* Report button */
+#report-btn {
+  background: #533483;
+  margin-bottom: 6px;
+}
+#report-btn:hover { background: #6a42a0; }
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-box {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 12px;
+  padding: 28px;
+  max-width: 480px;
+  width: 90%;
+  position: relative;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-wide { max-width: 640px; }
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: #a0a0c0;
+  font-size: 1.6rem;
+  cursor: pointer;
+  width: auto;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-close:hover { color: #e94560; background: none; }
+
+.modal-box h2 {
+  color: #e94560;
+  margin-bottom: 16px;
+  font-size: 1.2rem;
+}
+
+/* Jad avatar */
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+#jad-avatar {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid #e94560;
+  box-shadow: 0 0 24px rgba(233,69,96,0.4);
+}
+
+.avatar-bubble {
+  background: #1a1a2e;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  border: 1px solid #0f3460;
+}
+
+.avatar-bubble p {
+  color: #e94560;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.avatar-bubble ul {
+  padding-left: 16px;
+  color: #c0c0d0;
+}
+
+.avatar-bubble li { margin-bottom: 4px; }
+
+/* 30-day report */
+.report-day {
+  padding: 10px 12px;
+  margin: 6px 0;
+  background: #1a1a2e;
+  border-radius: 6px;
+  border-left: 3px solid #e94560;
+  font-size: 0.85rem;
+}
+
+.report-day .report-date {
+  color: #a0a0c0;
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+
+.report-day .report-count {
+  font-weight: bold;
+  color: #e0e0e0;
+}
+
+.report-day .report-count.zero { color: #30ff30; }
+.report-day .report-count.low  { color: #ffaa00; }
+.report-day .report-count.high { color: #ff3030; }
+
+#report-clear-btn {
+  background: #4a1a1a;
+  margin-top: 16px;
+}
+#report-clear-btn:hover { background: #6a2a2a; }

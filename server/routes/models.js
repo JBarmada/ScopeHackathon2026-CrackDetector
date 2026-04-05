@@ -103,4 +103,19 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// Delete a model by objectKey
+router.delete('/:objectKey', async (req, res, next) => {
+  try {
+    const token = await getToken();
+    await ossClient.deleteObject(
+      BUCKET_KEY,
+      req.params.objectKey,
+      { accessToken: token },
+    );
+    res.json({ deleted: req.params.objectKey });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

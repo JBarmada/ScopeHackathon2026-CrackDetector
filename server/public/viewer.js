@@ -17,6 +17,7 @@ const uploadModelBtn = document.getElementById('upload-model-btn');
 const modelStatus = document.getElementById('model-status');
 const modelSelect = document.getElementById('model-select');
 const loadModelBtn = document.getElementById('load-model-btn');
+const deleteModelBtn = document.getElementById('delete-model-btn');
 const refreshModelsBtn = document.getElementById('refresh-models-btn');
 
 const photoFileInput = document.getElementById('photo-file');
@@ -28,6 +29,7 @@ const resultsPanel = document.getElementById('results-panel');
 const resultsList = document.getElementById('results-list');
 const clearOverlaysBtn = document.getElementById('clear-overlays-btn');
 const scanViewBtn = document.getElementById('scan-view-btn');
+const unloadModelBtn = document.getElementById('unload-model-btn');
 
 // ============================================================
 // Part A: APS Viewer Initialization
@@ -62,16 +64,8 @@ function initViewer() {
         return;
       }
 
-      // Register our custom extension
-      Autodesk.Viewing.theExtensionManager.registerExtension(
-        'CrackOverlayExtension',
-        CrackOverlayExtension,
-      );
-      viewer.loadExtension('CrackOverlayExtension').then((ext) => {
-        crackOverlay = ext;
-        console.log('CrackOverlayExtension loaded:', ext);
-      });
-
+      // Create overlay div directly — no extension needed
+      crackOverlay = createOverlay();
       resolve(viewer);
     });
   });
@@ -92,6 +86,7 @@ function loadModel(urn) {
         const defaultModel = doc.getRoot().getDefaultGeometry();
         viewer.loadDocumentNode(doc, defaultModel);
         modelIsLoaded = true;
+        unloadModelBtn.disabled = false;
         resolve();
       },
       (errorCode, errorMsg) => {
@@ -102,89 +97,62 @@ function loadModel(urn) {
 }
 
 // ============================================================
-// Part B: CrackOverlayExtension (3D Viewer Overlay)
+// Part B: Crack Overlay (plain div, no extension)
 // ============================================================
 
-class CrackOverlayExtension extends Autodesk.Viewing.Extension {
-  constructor(viewer, options) {
-    super(viewer, options);
-    this.overlayContainer = null;
-    this.detections = [];
-  }
+function createOverlay() {
+  const container = document.createElement('div');
+  container.id = 'crack-overlay';
+  container.style.cssText =
+    'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99;';
+  viewerContainer.appendChild(container);
 
-  load() {
-    this.overlayContainer = document.createElement('div');
-    this.overlayContainer.id = 'crack-overlay';
-    this.overlayContainer.style.cssText =
-      'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99;';
-    viewerContainer.appendChild(this.overlayContainer);
-    return true;
-  }
+  return {
+    showDetections(detections, imgWidth, imgHeight) {
+      container.innerHTML = '';
+      const rect = viewerContainer.getBoundingClientRect();
+      const scaleX = rect.width / imgWidth;
+      const scaleY = rect.height / imgHeight;
 
-  unload() {
-    if (this.overlayContainer) {
-      this.overlayContainer.remove();
-      this.overlayContainer = null;
-    }
-    return true;
-  }
-
-  showDetections(detections, imgWidth, imgHeight) {
-    this.clearDetections();
-    this.detections = detections;
-
-    const containerRect = this.viewer.container.getBoundingClientRect();
-    const scaleX = containerRect.width / imgWidth;
-    const scaleY = containerRect.height / imgHeight;
-
-    detections.forEach((det) => {
-      const [x1, y1, x2, y2] = det.bbox;
-      const severity = det.confidence > 0.7 ? 'high' : det.confidence > 0.4 ? 'medium' : 'low';
-
-      const box = document.createElement('div');
-      box.className = `detection-box ${severity}`;
-      box.style.left = `${x1 * scaleX}px`;
-      box.style.top = `${y1 * scaleY}px`;
-      box.style.width = `${(x2 - x1) * scaleX}px`;
-      box.style.height = `${(y2 - y1) * scaleY}px`;
-
-      const label = document.createElement('div');
-      label.className = 'detection-label';
-      label.textContent = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
-      box.appendChild(label);
-
-      this.overlayContainer.appendChild(box);
-
-      // Draw mask polygon if available
-      if (det.mask_polygon && det.mask_polygon.length > 2) {
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.style.cssText =
-          'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
-        svg.setAttribute('viewBox', `0 0 ${containerRect.width} ${containerRect.height}`);
-
-        const points = det.mask_polygon
-          .map(([px, py]) => `${px * scaleX},${py * scaleY}`)
-          .join(' ');
-
-        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        polygon.setAttribute('points', points);
+      detections.forEach((det) => {
+        const [x1, y1, x2, y2] = det.bbox;
+        const severity = det.confidence > 0.7 ? 'high' : det.confidence > 0.4 ? 'medium' : 'low';
         const color = severity === 'high' ? '255,48,48' : severity === 'medium' ? '255,170,0' : '48,255,48';
-        polygon.setAttribute('fill', `rgba(${color},0.2)`);
-        polygon.setAttribute('stroke', `rgba(${color},0.8)`);
-        polygon.setAttribute('stroke-width', '2');
 
-        svg.appendChild(polygon);
-        this.overlayContainer.appendChild(svg);
-      }
-    });
-  }
+        const box = document.createElement('div');
+        box.className = `detection-box ${severity}`;
+        box.style.left = `${x1 * scaleX}px`;
+        box.style.top = `${y1 * scaleY}px`;
+        box.style.width = `${(x2 - x1) * scaleX}px`;
+        box.style.height = `${(y2 - y1) * scaleY}px`;
 
-  clearDetections() {
-    if (this.overlayContainer) {
-      this.overlayContainer.innerHTML = '';
-    }
-    this.detections = [];
-  }
+        const label = document.createElement('div');
+        label.className = 'detection-label';
+        label.textContent = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
+        box.appendChild(label);
+        container.appendChild(box);
+
+        if (det.mask_polygon && det.mask_polygon.length > 2) {
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
+          svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+
+          const points = det.mask_polygon.map(([px, py]) => `${px * scaleX},${py * scaleY}`).join(' ');
+          const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          polygon.setAttribute('points', points);
+          polygon.setAttribute('fill', `rgba(${color},0.2)`);
+          polygon.setAttribute('stroke', `rgba(${color},0.8)`);
+          polygon.setAttribute('stroke-width', '2');
+          svg.appendChild(polygon);
+          container.appendChild(svg);
+        }
+      });
+    },
+
+    clearDetections() {
+      container.innerHTML = '';
+    },
+  };
 }
 
 // ============================================================
@@ -375,6 +343,7 @@ async function refreshModelList() {
     models.forEach((m) => {
       const opt = document.createElement('option');
       opt.value = m.urn;
+      opt.dataset.objectKey = m.name;
       opt.textContent = m.name;
       modelSelect.appendChild(opt);
     });
@@ -385,6 +354,7 @@ async function refreshModelList() {
 
 modelSelect.addEventListener('change', () => {
   loadModelBtn.disabled = !modelSelect.value;
+  deleteModelBtn.disabled = !modelSelect.value;
 });
 
 loadModelBtn.addEventListener('click', async () => {
@@ -400,6 +370,26 @@ loadModelBtn.addEventListener('click', async () => {
 });
 
 refreshModelsBtn.addEventListener('click', refreshModelList);
+
+deleteModelBtn.addEventListener('click', async () => {
+  const selected = modelSelect.options[modelSelect.selectedIndex];
+  if (!selected || !selected.value) return;
+
+  const objectKey = selected.dataset.objectKey;
+  if (!confirm(`Delete "${objectKey}"? This cannot be undone.`)) return;
+
+  deleteModelBtn.disabled = true;
+  setStatus(modelStatus, 'Deleting...', 'info');
+  try {
+    const resp = await fetch(`/api/models/${encodeURIComponent(objectKey)}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error('Delete failed');
+    setStatus(modelStatus, 'Deleted.', 'success');
+    await refreshModelList();
+  } catch (err) {
+    setStatus(modelStatus, err.message, 'error');
+    deleteModelBtn.disabled = false;
+  }
+});
 
 // --- Crack Detection ---
 photoFileInput.addEventListener('change', () => {
@@ -456,6 +446,7 @@ detectBtn.addEventListener('click', async () => {
     const count = data.detections.length;
     setStatus(detectStatus, `Found ${count} defect${count !== 1 ? 's' : ''}`, 'success');
     showResults(data.detections);
+    saveInspectionEntry(data.detections);
 
     currentPhoto = resizedImg;
     canvasDetections = data.detections;
@@ -489,7 +480,41 @@ clearOverlaysBtn.addEventListener('click', () => {
   }
 });
 
+// --- Unload Model ---
+unloadModelBtn.addEventListener('click', () => {
+  if (viewer) {
+    viewer.unloadModel(viewer.model);
+  }
+  modelIsLoaded = false;
+  unloadModelBtn.disabled = true;
+  if (crackOverlay) crackOverlay.clearDetections();
+  setStatus(modelStatus, 'Model unloaded', 'info');
+  // Switch to canvas/photo mode
+  switchToCanvas();
+  ctx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+});
+
 // --- Scan Current View ---
+function enhanceCanvasForML(sourceCanvas) {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const ctx2 = out.getContext('2d');
+
+  // Draw original
+  ctx2.drawImage(sourceCanvas, 0, 0);
+
+  // Boost contrast + brightness to match real photo appearance
+  // filter: contrast makes cracks stand out more against the surface
+  ctx2.filter = 'contrast(160%) brightness(95%) saturate(80%)';
+  ctx2.drawImage(sourceCanvas, 0, 0);
+  ctx2.filter = 'none';
+
+  return out;
+}
+
 scanViewBtn.addEventListener('click', async () => {
   if (!viewer || !modelIsLoaded) {
     setStatus(detectStatus, 'Load a 3D model first', 'error');
@@ -500,18 +525,20 @@ scanViewBtn.addEventListener('click', async () => {
   setStatus(detectStatus, 'Capturing view...', 'info');
 
   try {
-    // Capture the viewer canvas as a blob
-    const canvas = viewerContainer.querySelector('canvas.lmv-webgl-canvas')
+    const rawCanvas = viewerContainer.querySelector('canvas.lmv-webgl-canvas')
       || viewerContainer.querySelector('canvas');
 
-    if (!canvas) throw new Error('Could not find viewer canvas');
+    if (!rawCanvas) throw new Error('Could not find viewer canvas');
 
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    // Enhance contrast before sending to ML
+    const enhanced = enhanceCanvasForML(rawCanvas);
+    const blob = await new Promise((resolve) => enhanced.toBlob(resolve, 'image/jpeg', 0.95));
     const formData = new FormData();
     formData.append('file', blob, 'viewer-snapshot.jpg');
 
     setStatus(detectStatus, 'Analyzing view...', 'info');
-    const confidence = confidenceSlider.value;
+    // Use lower confidence threshold for rendered views vs real photos
+    const confidence = Math.min(parseFloat(confidenceSlider.value), 0.15);
     const resp = await fetch(`/api/inspect/detect?confidence=${confidence}`, {
       method: 'POST',
       body: formData,
@@ -522,6 +549,7 @@ scanViewBtn.addEventListener('click', async () => {
     const count = data.detections.length;
     setStatus(detectStatus, `Found ${count} defect${count !== 1 ? 's' : ''}`, count > 0 ? 'success' : 'info');
     showResults(data.detections);
+    saveInspectionEntry(data.detections);
 
     if (crackOverlay) {
       crackOverlay.showDetections(data.detections, data.image_width, data.image_height);
@@ -531,6 +559,92 @@ scanViewBtn.addEventListener('click', async () => {
   } finally {
     scanViewBtn.disabled = false;
   }
+});
+
+// ============================================================
+// Help Modal
+// ============================================================
+
+const helpBtn = document.getElementById('help-btn');
+const helpModal = document.getElementById('help-modal');
+const helpClose = document.getElementById('help-close');
+
+helpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
+helpClose.addEventListener('click', () => helpModal.classList.add('hidden'));
+helpModal.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.classList.add('hidden'); });
+
+// ============================================================
+// 30-Day Inspection Log
+// ============================================================
+
+const STORAGE_KEY = 'crack_inspector_log';
+
+function saveInspectionEntry(detections) {
+  const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  log.push({
+    timestamp: Date.now(),
+    count: detections.length,
+    detections: detections.map((d) => ({
+      class: d.class,
+      confidence: d.confidence,
+    })),
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(log));
+}
+
+function renderReport() {
+  const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  const content = document.getElementById('report-content');
+
+  if (log.length === 0) {
+    content.innerHTML = '<p style="color:#a0a0c0;text-align:center;padding:20px">No inspections recorded yet.</p>';
+    return;
+  }
+
+  // Group by calendar day
+  const byDay = {};
+  log.forEach((entry) => {
+    const day = new Date(entry.timestamp).toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    });
+    if (!byDay[day]) byDay[day] = [];
+    byDay[day].push(entry);
+  });
+
+  const days = Object.keys(byDay);
+  const startDate = new Date(log[0].timestamp);
+
+  content.innerHTML = days.map((day, i) => {
+    const entries = byDay[day];
+    const totalCracks = entries.reduce((sum, e) => sum + e.count, 0);
+    const dayNum = Math.floor((new Date(entries[0].timestamp) - startDate) / 86400000) + 1;
+    const countClass = totalCracks === 0 ? 'zero' : totalCracks <= 2 ? 'low' : 'high';
+    const scans = entries.length;
+    return `
+      <div class="report-day">
+        <div class="report-date">Day ${dayNum} — ${day} &nbsp;·&nbsp; ${scans} scan${scans !== 1 ? 's' : ''}</div>
+        <div class="report-count ${countClass}">
+          ${totalCracks === 0 ? 'No defects found' : `${totalCracks} defect${totalCracks !== 1 ? 's' : ''} detected`}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+const reportBtn = document.getElementById('report-btn');
+const reportModal = document.getElementById('report-modal');
+const reportClose = document.getElementById('report-close');
+const reportClearBtn = document.getElementById('report-clear-btn');
+
+reportBtn.addEventListener('click', () => {
+  renderReport();
+  reportModal.classList.remove('hidden');
+});
+reportClose.addEventListener('click', () => reportModal.classList.add('hidden'));
+reportModal.addEventListener('click', (e) => { if (e.target === reportModal) reportModal.classList.add('hidden'); });
+reportClearBtn.addEventListener('click', () => {
+  localStorage.removeItem(STORAGE_KEY);
+  renderReport();
 });
 
 // ============================================================

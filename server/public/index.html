@@ -27,6 +27,8 @@
         </select>
         <button id="load-model-btn" disabled>Load in Viewer</button>
         <button id="refresh-models-btn">Refresh List</button>
+        <button id="delete-model-btn" disabled>Delete Selected</button>
+        <button id="unload-model-btn" disabled>Unload Model</button>
       </section>
 
       <!-- Crack Detection Section -->
@@ -49,6 +51,7 @@
       </section>
 
       <section class="panel">
+        <button id="report-btn">30-Day Report</button>
         <button id="clear-overlays-btn">Clear Overlays</button>
       </section>
     </aside>
@@ -58,6 +61,38 @@
       <div id="viewer-container"></div>
       <canvas id="photo-canvas" class="hidden"></canvas>
     </main>
+  </div>
+
+  <!-- Help Button -->
+  <button id="help-btn">?</button>
+
+  <!-- Help Modal -->
+  <div id="help-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <button class="modal-close" id="help-close">&times;</button>
+      <div class="avatar-section">
+        <img id="jad-avatar" src="jad.jpg" alt="Jad" onerror="this.src='https://api.dicebear.com/7.x/avataaars/svg?seed=Jad'">
+        <div class="avatar-bubble">
+          <p>Hi, I'm Jad — let's take a look at your crack!</p>
+          <ul>
+            <li>Upload a <strong>3D model</strong> to view it in the browser</li>
+            <li>Upload a <strong>crack photo</strong> and click <em>Detect from Photo</em></li>
+            <li>Or click <em>Scan Current View</em> to analyze the 3D model directly</li>
+            <li>Check your <strong>30-Day Report</strong> to track defects over time</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 30-Day Report Modal -->
+  <div id="report-modal" class="modal-overlay hidden">
+    <div class="modal-box modal-wide">
+      <button class="modal-close" id="report-close">&times;</button>
+      <h2>30-Day Inspection Report</h2>
+      <div id="report-content"></div>
+      <button id="report-clear-btn">Clear History</button>
+    </div>
   </div>
 
   <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.js"></script>
