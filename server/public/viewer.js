@@ -39,6 +39,7 @@ const drawCanvas     = document.getElementById('draw-canvas');
 const evaluateBtn    = document.getElementById('evaluate-btn');
 const dangerInfoBtn  = document.getElementById('danger-info-btn');
 const calibrateBtn   = document.getElementById('calibrate-btn');
+const syncAPSCalBtn  = document.getElementById('sync-aps-cal-btn');
 const measureDepthBtn= document.getElementById('measure-depth-btn');
 const measureStatus  = document.getElementById('measure-status');
 const depthResult    = document.getElementById('depth-result');
@@ -93,6 +94,15 @@ function loadModel(urn) {
     }
 
     switchToViewer();
+
+    // Clear previous overlays and detections before loading new model
+    if (crackOverlay) crackOverlay.clearDetections();
+    currentDetections = [];
+    if (typeof showResults === 'function' && resultsPanel) {
+      resultsPanel.classList.add('hidden');
+      resultsList.innerHTML = '';
+      if (resultsCount) resultsCount.textContent = '';
+    }
 
     Autodesk.Viewing.Document.load(
       `urn:${urn}`,
@@ -531,8 +541,15 @@ unloadModelBtn.addEventListener('click', () => {
   }
   modelIsLoaded = false;
   currentModelName = null;
-  unloadModelBtn.disabled = true;
+  unloadModelBtn.disabled  = true;
+  calibrateBtn.disabled    = true;
+  syncAPSCalBtn.disabled   = true;
+  measureDepthBtn.disabled = true;
   if (crackOverlay) crackOverlay.clearDetections();
+  currentDetections = [];
+  resultsPanel.classList.add('hidden');
+  resultsList.innerHTML = '';
+  if (resultsCount) resultsCount.textContent = '';
   setStatus(modelStatus, 'Model unloaded', 'info');
   // Switch to canvas/photo mode
   switchToCanvas();
@@ -739,8 +756,201 @@ let measurePoints = [];       // collected {x,y,world} points for current measur
 
 function enableMeasureButtons() {
   if (viewer && modelIsLoaded) {
-    calibrateBtn.disabled = false;
-    measureDepthBtn.disabled = false;
+    calibrateBtn.disabled   = false;
+    syncAPSCalBtn.disabled  = false;
+    measureDepthBtn.disabled= false;
+  }
+}
+
+// ---- APS Measure Extension + Auto-Scale ----
+
+let _measureExt = null;
+
+async function loadAndSyncMeasureExtension() {
+  if (!viewer) return;
+  try {
+    _measureExt = await viewer.loadExtension('Autodesk.Measure');
+    console.log('[CrackJad] Autodesk.Measure loaded');
+  } catch (e) {
+    console.warn('[CrackJad] Autodesk.Measure load failed (non-fatal):', e);
+  }
+
+  // --- Primary calibration: model unit scale + hitTest (no user action needed) ---
+  autoComputeScale(false);
+
+  // Re-compute silently after camera stops moving (debounced — do NOT run mid-rotation)
+  let _camDebounce = null;
+  viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+    clearTimeout(_camDebounce);
+    _camDebounce = setTimeout(() => autoComputeScale(true), 600);
+  });
+
+  // Listen for APS measurement/calibration events (multiple names for version compat)
+  const onMeasureEvent = () => setTimeout(() => {
+    if (!syncFromExtProps(_measureExt)) autoComputeScale(false);
+  }, 500);
+
+  viewer.addEventListener(Autodesk.Viewing.TOOL_CHANGE_EVENT, onMeasureEvent);
+  if (_measureExt && typeof _measureExt.addEventListener === 'function') {
+    for (const evt of ['calibration-factor-changed', 'calibrationChanged', 'measurement-changed']) {
+      try { _measureExt.addEventListener(evt, onMeasureEvent); } catch (_) {}
+    }
+  }
+
+  // Wire the Sync button
+  const syncBtn = document.getElementById('sync-aps-cal-btn');
+  if (syncBtn) {
+    syncBtn.disabled = false;
+    syncBtn.addEventListener('click', () => {
+      // Try APS ext props first; fall back to model-unit auto-compute
+      if (!syncFromExtProps(_measureExt)) autoComputeScale(false);
+    });
+  }
+}
+
+// PRIMARY: derive mm/px from viewer.model.getUnitScale() + hitTest
+// Works for any properly-exported CAD file (RVT, IFC, DWG, GLB, OBJ, STP)
+// with no user action required.
+function autoComputeScale(silent = false) {
+  if (!viewer || !viewer.model) return false;
+  try {
+    const metersPerModelUnit = viewer.model.getUnitScale();
+    if (!metersPerModelUnit || metersPerModelUnit <= 0) return false;
+    const mmPerModelUnit = metersPerModelUnit * 1000;
+
+    const vpW = viewer.container.clientWidth;
+    const vpH = viewer.container.clientHeight;
+
+    // Try hitTest at 6 locations; stop at first pair that hits geometry
+    const OFFSET = 10;
+    const spots = [
+      [vpW*0.50, vpH*0.50], [vpW*0.40, vpH*0.50], [vpW*0.60, vpH*0.50],
+      [vpW*0.50, vpH*0.40], [vpW*0.50, vpH*0.60], [vpW*0.35, vpH*0.35],
+    ];
+    let modelUnitsPerPx = null;
+    for (const [cx, cy] of spots) {
+      const h1 = viewer.impl.hitTest(cx,          cy, false);
+      const h2 = viewer.impl.hitTest(cx + OFFSET,  cy, false);
+      if (h1?.point && h2?.point) {
+        const dx = h2.point.x - h1.point.x;
+        const dy = h2.point.y - h1.point.y;
+        const dz = h2.point.z - h1.point.z;
+        const d  = Math.sqrt(dx*dx + dy*dy + dz*dz) / OFFSET;
+        if (d > 0) { modelUnitsPerPx = d; break; }
+      }
+    }
+
+    // Fallback: project model bbox centre through camera
+    if (!modelUnitsPerPx) {
+      const bbox = viewer.model.getBoundingBox?.();
+      const origin = bbox
+        ? bbox.getCenter(new THREE.Vector3())
+        : new THREE.Vector3(0, 0, 0);
+      const cam = viewer.impl.camera;
+      const s1 = origin.clone().project(cam);
+      const s2 = origin.clone().add(new THREE.Vector3(1, 0, 0)).project(cam);
+      const pxPerUnit = Math.abs(s2.x - s1.x) * vpW / 2;
+      if (pxPerUnit > 0) modelUnitsPerPx = 1 / pxPerUnit;
+    }
+
+    if (!modelUnitsPerPx || modelUnitsPerPx <= 0) return false;
+
+    mmPerPx = modelUnitsPerPx * mmPerModelUnit;
+
+    if (!silent) {
+      const displayUnit = viewer.model.getDisplayUnit?.() || 'model units';
+      const calStatus = document.getElementById('calibration-status');
+      if (calStatus) {
+        calStatus.textContent = `✅ Auto (${displayUnit}): 1px ≈ ${mmPerPx.toFixed(3)} mm`;
+        calStatus.className = 'status success';
+      }
+      console.log(`[CrackJad] Auto-scale: ${mmPerPx.toFixed(4)} mm/px  ` +
+        `(getUnitScale=${metersPerModelUnit}, mmPerModelUnit=${mmPerModelUnit.toFixed(4)})`);
+    }
+    return true;
+  } catch (e) {
+    console.warn('[CrackJad] autoComputeScale error:', e);
+    return false;
+  }
+}
+
+// SECONDARY: read calibrationFactor from Autodesk.Measure extension properties.
+// Dumps ALL calibration-related props to console so we can see what APS exposes.
+function syncFromExtProps(ext) {
+  try {
+    if (!ext) return false;
+
+    // Deep-scan the ext object and its children for anything calibration-related
+    const dump = {};
+    const scan = (obj, label) => {
+      if (!obj || typeof obj !== 'object') return;
+      try {
+        for (const k of Object.getOwnPropertyNames(obj)) {
+          if (/calib|factor|unit/i.test(k)) dump[`${label}.${k}`] = obj[k];
+        }
+      } catch (_) {}
+    };
+    scan(ext,              'ext');
+    scan(ext.measureTool,  'ext.measureTool');
+    scan(ext._measureTool, 'ext._measureTool');
+    scan(ext.tool,         'ext.tool');
+    console.log('[CrackJad] Measure ext calibration dump:', dump);
+
+    // Probe every plausible path
+    const factorPaths = [
+      ext.calibrationFactor,
+      ext._calibrationFactor,
+      ext.measureTool?.calibrationFactor,
+      ext.measureTool?._calibrationFactor,
+      ext._measureTool?.calibrationFactor,
+      ext.tool?.calibrationFactor,
+      ext.calibration?.factor,
+    ];
+    let factor = null;
+    for (const v of factorPaths) {
+      if (v != null && v !== 0 && typeof v === 'number') { factor = v; break; }
+    }
+
+    const unitPaths = [
+      ext.calibrationUnits,        ext._calibrationUnits,
+      ext.measureTool?.calibrationUnits, ext._measureTool?.calibrationUnits,
+    ];
+    let units = 'mm';
+    for (const v of unitPaths) {
+      if (v && typeof v === 'string') { units = v; break; }
+    }
+
+    console.log(`[CrackJad] calibrationFactor resolved: ${factor}, units: ${units}`);
+    if (!factor || factor <= 0) return false;
+
+    const toMm = { mm:1, cm:10, m:1000, in:25.4, ft:304.8,
+                   millimeter:1, centimeter:10, meter:1000, foot:304.8, inch:25.4 };
+    const mmPerModelUnit = factor * (toMm[units.toLowerCase()] ?? 1);
+    if (mmPerModelUnit <= 0) return false;
+
+    // Get px/model-unit from hitTest at viewport centre
+    const vpW = viewer.container.clientWidth;
+    const vpH = viewer.container.clientHeight;
+    const h1  = viewer.impl.hitTest(vpW/2,    vpH/2, false);
+    const h2  = viewer.impl.hitTest(vpW/2+10, vpH/2, false);
+    if (h1?.point && h2?.point) {
+      const dx = h2.point.x-h1.point.x, dy = h2.point.y-h1.point.y, dz = h2.point.z-h1.point.z;
+      const mUPerPx = Math.sqrt(dx*dx+dy*dy+dz*dz) / 10;
+      if (mUPerPx > 0) {
+        mmPerPx = mUPerPx * mmPerModelUnit;
+        const calStatus = document.getElementById('calibration-status');
+        if (calStatus) {
+          calStatus.textContent = `✅ APS synced: 1px ≈ ${mmPerPx.toFixed(3)} mm (${units})`;
+          calStatus.className = 'status success';
+        }
+        console.log(`[CrackJad] APS calibration applied: ${mmPerPx.toFixed(4)} mm/px`);
+        return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    console.warn('[CrackJad] syncFromExtProps error:', e);
+    return false;
   }
 }
 
@@ -1034,18 +1244,55 @@ function suggestRepair(crackType, widthMm, depthMm, material, nearWater, loadBea
   return 'monitor';
 }
 
+const DEMOLISH_JOKES = [
+  "Jad has seen a lot of cracks. This one made him cry. 😢",
+  "Jad says: 'I've inspected thousands of cracks. This one personally offended me.' 😤",
+  "Even Jad's optimism couldn't survive this inspection. 💔",
+  "Jad took one look, packed his bag, and said 'not my problem anymore.' 🧳",
+  "Jad's professional opinion: 'Bro. Just... bro.' 🤦",
+  "Jad has a motto: every crack can be fixed. Today, Jad revised his motto. ✏️",
+  "Jad whispered 'I'm sorry' to the building and walked away slowly. 🚶",
+  "Jad tried to find something positive to say. He is still trying. ⏳",
+];
+const REPAIR_JOKES = [
+  "Jad has seen worse. He will not say when, but he has. 💪",
+  "Jad approves. Jad has spoken. 🏆",
+  "Jad looked at this crack and said 'yeah, I can fix that' without even flinching. 😎",
+  "Jad's favourite crack type: the fixable kind. This is that. ✅",
+  "Jad says: 'A little epoxy, a little prayer, we are good.' 🙏",
+  "Jad has personally escorted worse cracks back to health. This one will be fine. 🩺",
+  "Jad is already mentally ordering the repair materials. He is very excited. 🛒",
+  "Don't worry. Jad has a guy for this. Jad IS the guy for this. 🔧",
+];
+const MONITOR_JOKES = [
+  "Jad is watching. Jad is always watching. 👀",
+  "Jad says: 'I'll keep my eye on it.' Jad has 47 other cracks he is also watching. 🧐",
+  "Jad rated this crack a 3/10. Not impressed, not alarmed. 😐",
+  "Jad's professional verdict: 'Meh.' — High praise from Jad, honestly. 🤷",
+  "Jad put this crack on a 6-month check-in schedule. It is now Jad's problem in December. 📅",
+  "Jad looked at this crack and yawned. That's actually a great sign. 😴",
+  "Jad says this crack needs to 'think about what it's done' before any action is taken. 🪑",
+  "Not urgent enough for Jad to put down his coffee. Solid outcome. ☕",
+];
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
 function calcVerdict(crackType, widthMm, depthMm, nearWater, seismic, loadBearing, activity) {
   const w = widthMm || 0;
   const d = depthMm || 0;
 
   // Immediate demolish conditions
-  if (w > 10 || d > 200) return { verdict: 'DEMOLISH', reason: 'Crack dimensions exceed safe repair thresholds.' };
-  if (crackType === 'shear' && loadBearing && activity === 'active') return { verdict: 'DEMOLISH', reason: 'Active shear crack in load-bearing element — brittle failure risk.' };
-  if (nearWater && d > 100 && crackType !== 'shrinkage') return { verdict: 'DEMOLISH', reason: 'Deep through-crack in water-retaining structure.' };
+  if (w > 10 || d > 200)
+    return { verdict: 'DEMOLISH', reason: `Crack dimensions exceed safe repair thresholds. ${pick(DEMOLISH_JOKES)}` };
+  if (crackType === 'shear' && loadBearing && activity === 'active')
+    return { verdict: 'DEMOLISH', reason: `Active shear crack in load-bearing element — brittle failure risk. ${pick(DEMOLISH_JOKES)}` };
+  if (nearWater && d > 100 && crackType !== 'shrinkage')
+    return { verdict: 'DEMOLISH', reason: `Deep through-crack in water-retaining structure. ${pick(DEMOLISH_JOKES)}` };
 
   // Monitor only
-  if (!loadBearing && w < 0.1 && activity !== 'active') return { verdict: 'MONITOR', reason: 'Hairline crack in non-structural element. Low risk — monitor quarterly.' };
-  if (crackType === 'shrinkage' && w < 0.3 && !nearWater) return { verdict: 'MONITOR', reason: 'Shallow shrinkage cracking. Seal if moisture ingress is a concern.' };
+  if (!loadBearing && w < 0.1 && activity !== 'active')
+    return { verdict: 'MONITOR', reason: `Hairline crack in non-structural element. Low risk — monitor quarterly. ${pick(MONITOR_JOKES)}` };
+  if (crackType === 'shrinkage' && w < 0.3 && !nearWater)
+    return { verdict: 'MONITOR', reason: `Shallow shrinkage cracking. Seal if moisture ingress is a concern. ${pick(MONITOR_JOKES)}` };
 
   // Default: repair
   let reason = '';
@@ -1054,7 +1301,8 @@ function calcVerdict(crackType, widthMm, depthMm, nearWater, seismic, loadBearin
   if (nearWater) reason += '⚠️ Water proximity — waterproofing critical. ';
   if (seismic) reason += '⚠️ Seismic zone — check code compliance. ';
   if (activity === 'active') reason += '⚠️ Active crack — identify and fix root cause before repairing. ';
-  return { verdict: 'REPAIR', reason: reason || 'Crack requires sealing/injection to prevent deterioration.' };
+  reason += pick(REPAIR_JOKES);
+  return { verdict: 'REPAIR', reason: reason || `Crack requires sealing/injection to prevent deterioration. ${pick(REPAIR_JOKES)}` };
 }
 
 function openEvalModal(detIndex = 0) {
@@ -1262,8 +1510,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshModelList();
 });
 
-// Enable measurement buttons when model loads (called from loadModel success callback)
-const _origLoadModel = loadModel;
-// Patch: after loadModel resolves, enable measure buttons
-// (already handled inside loadModel via modelIsLoaded = true; add explicit call here)
-document.addEventListener('modelLoaded', enableMeasureButtons);
+// Enable measurement buttons and sync APS Measure extension when model loads
+document.addEventListener('modelLoaded', () => {
+  enableMeasureButtons();
+  loadAndSyncMeasureExtension();
+});

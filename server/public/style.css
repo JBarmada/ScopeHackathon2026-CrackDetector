@@ -379,6 +379,8 @@ button:disabled {
    ============================================================ */
 #calibrate-btn { background: #0f5460; }
 #calibrate-btn:hover:not(:disabled) { background: #1a7080; }
+#sync-aps-cal-btn { background: #1a4060; }
+#sync-aps-cal-btn:hover:not(:disabled) { background: #2a6080; }
 #measure-depth-btn { background: #0f5460; }
 #measure-depth-btn:hover:not(:disabled) { background: #1a7080; }
 #calibrate-btn.active-tool, #measure-depth-btn.active-tool {
