@@ -4,94 +4,204 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crack Jad</title>
+
+  <!-- ============================================================
+       External Stylesheets
+       - Autodesk Forge Viewer v7 stylesheet for the embedded 3D viewer
+       - Local application stylesheet for all custom UI components
+       ============================================================ -->
   <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+  <!-- ============================================================
+       APPLICATION ROOT
+       The #app container uses a flexbox layout to split the screen
+       into a fixed-width sidebar (controls) and a flexible main
+       viewer area. This two-panel layout is the foundation of the UI.
+       ============================================================ -->
   <div id="app">
-    <!-- Sidebar -->
+
+    <!-- ============================================================
+         SIDEBAR — Primary Control Panel
+         Contains all user-facing controls organized into collapsible
+         panel sections: model management, measurement tools, crack
+         detection (AI + manual), and utility actions. The sidebar
+         scrolls independently of the viewer.
+         ============================================================ -->
     <aside id="sidebar">
+
+      <!-- Application title / branding -->
       <h1>Crack Jad</h1>
 
-      <!-- Model Upload Section -->
+      <!-- ==========================================================
+           PANEL 1: 3D Model Management
+           Allows users to upload BIM/CAD files (.rvt, .dwg, .ifc, etc.)
+           to the Autodesk Platform Services (APS) backend for translation,
+           then load the translated model into the embedded Forge Viewer.
+           Also provides controls to refresh the model list, delete
+           uploaded models from the server, or unload the current model.
+           ========================================================== -->
       <section class="panel">
         <h2>3D Model</h2>
+
+        <!-- File input + upload trigger: accepts common BIM/CAD formats -->
         <div class="upload-group">
           <input type="file" id="model-file" accept=".rvt,.dwg,.ifc,.nwd,.obj,.fbx,.glb,.stp,.step">
           <button id="upload-model-btn" disabled>Upload &amp; Translate</button>
         </div>
+
+        <!-- Status area for upload/translation progress messages -->
         <div id="model-status" class="status"></div>
+
+        <!-- Dropdown to select from previously translated models stored on the server -->
         <label for="model-select">Load Translated Model:</label>
         <select id="model-select">
           <option value="">-- Select a model --</option>
         </select>
+
+        <!-- Model action buttons: load, refresh list, delete, and unload -->
         <button id="load-model-btn" disabled>Load in Viewer</button>
         <button id="refresh-models-btn">Refresh List</button>
         <button id="delete-model-btn" disabled>Delete Selected</button>
         <button id="unload-model-btn" disabled>Unload Model</button>
       </section>
 
-      <!-- Measurement & Calibration -->
+      <!-- ==========================================================
+           PANEL 2: Measurement & Calibration Tools
+           Provides real-world measurement capabilities on top of the
+           3D model. Users can manually calibrate the scale by picking
+           two known points, sync calibration from APS metadata, or
+           measure the depth of a crack by selecting two surface points.
+           These measurements feed into the Evaluation Report.
+           ========================================================== -->
       <section class="panel" id="measure-panel">
         <h2>Measurement Tools</h2>
+
+        <!-- Displays current calibration state (calibrated vs. not calibrated) -->
         <div id="calibration-status" class="status info">No calibration set</div>
-        <button id="calibrate-btn" disabled>📐 Calibrate Scale (manual)</button>
-        <button id="sync-aps-cal-btn" disabled>🔄 Sync APS Calibration</button>
-        <button id="measure-depth-btn" disabled>📏 Measure Depth (2 pts)</button>
+
+        <!-- Manual calibration: user picks two points and enters known distance -->
+        <button id="calibrate-btn" disabled>&#x1F4D0; Calibrate Scale (manual)</button>
+
+        <!-- Auto-sync calibration from APS model metadata if available -->
+        <button id="sync-aps-cal-btn" disabled>&#x1F504; Sync APS Calibration</button>
+
+        <!-- Depth measurement: user picks two points to compute crack depth -->
+        <button id="measure-depth-btn" disabled>&#x1F4CF; Measure Depth (2 pts)</button>
+
+        <!-- Status feedback while measurement mode is active -->
         <div id="measure-status" class="status hidden"></div>
+
+        <!-- Displays the computed depth value after measurement completes -->
         <div id="depth-result" class="hidden">
           <span class="depth-label">Measured depth:</span>
-          <span id="depth-value" class="depth-value">—</span>
+          <span id="depth-value" class="depth-value">&mdash;</span>
         </div>
       </section>
 
-      <!-- Crack Detection Section -->
+      <!-- ==========================================================
+           PANEL 3: Crack Detection (AI + Manual)
+           The core feature panel. Offers three detection methods:
+             1. "Scan Current View" — captures the viewer screenshot
+                and sends it to the YOLOv8 AI model for detection.
+             2. "Detect from Photo" — uploads a crack photo for AI analysis.
+             3. "Manual Draw Mode" — lets the user hand-draw bounding
+                boxes when AI detection is unreliable.
+           Also contains the AI confidence threshold slider and the
+           detection results list with the evaluation report trigger.
+           ========================================================== -->
       <section class="panel">
         <h2>Crack Detection</h2>
-        <button id="scan-view-btn">🤖 Scan Current View (AI)</button>
+
+        <!-- AI scan of the current 3D viewer viewport -->
+        <button id="scan-view-btn">&#x1F916; Scan Current View (AI)</button>
+
+        <!-- Photo upload + AI detection from external crack images -->
         <div class="upload-group">
           <input type="file" id="photo-file" accept="image/*">
-          <button id="detect-btn" disabled>🤖 Detect from Photo (AI)</button>
+          <button id="detect-btn" disabled>&#x1F916; Detect from Photo (AI)</button>
         </div>
-        <button id="draw-mode-btn">✏️ Manual Draw Mode</button>
+
+        <!-- Manual bounding box drawing mode for difficult-to-detect cracks -->
+        <button id="draw-mode-btn">&#x270F;&#xFE0F; Manual Draw Mode</button>
         <div id="draw-mode-hint" class="draw-hint hidden">Click &amp; drag on the view to draw a crack bounding box. Press <strong>Esc</strong> to exit.</div>
+
+        <!-- Confidence threshold slider: filters AI detections below this value -->
         <label for="confidence-slider">AI Confidence: <span id="confidence-val">0.25</span></label>
         <input type="range" id="confidence-slider" min="0" max="1" step="0.05" value="0.25">
+
+        <!-- Status area for detection progress and error messages -->
         <div id="detect-status" class="status"></div>
 
-        <!-- Detection Results -->
+        <!-- ==========================================================
+             Detection Results Sub-Panel
+             Shown after a detection run completes. Lists each detected
+             crack with its confidence score. Users can click a result
+             to highlight it, then run a full structural evaluation.
+             ========================================================== -->
         <div id="results-panel" class="hidden">
           <h3>Detections <span id="results-count" class="badge"></span></h3>
           <div id="results-list"></div>
-          <button id="evaluate-btn" class="btn-evaluate">📋 Full Evaluation Report</button>
+          <!-- Opens the Evaluation Modal for in-depth crack assessment -->
+          <button id="evaluate-btn" class="btn-evaluate">&#x1F4CB; Full Evaluation Report</button>
         </div>
       </section>
 
+      <!-- ==========================================================
+           PANEL 4: Utility Actions
+           Quick-access buttons for reference material, historical
+           reporting, and clearing visual overlays from the viewer.
+           ========================================================== -->
       <section class="panel">
-        <button id="danger-info-btn" class="btn-danger-info">⚠️ Crack Danger Reference</button>
-        <button id="report-btn">📊 30-Day Report</button>
+        <!-- Opens the Danger Reference Modal with engineering standards -->
+        <button id="danger-info-btn" class="btn-danger-info">&#x26A0;&#xFE0F; Crack Danger Reference</button>
+        <!-- Opens the 30-Day Report Modal showing inspection history -->
+        <button id="report-btn">&#x1F4CA; 30-Day Report</button>
+        <!-- Removes all detection overlays and bounding boxes from the viewer -->
         <button id="clear-overlays-btn">Clear Overlays</button>
       </section>
     </aside>
 
-    <!-- Main Viewer Area -->
+    <!-- ============================================================
+         MAIN VIEWER AREA
+         The primary content area where the Autodesk Forge 3D viewer
+         is rendered. Also contains two overlay canvases:
+           - photo-canvas: displays uploaded crack photos for detection
+           - draw-canvas: captures manual bounding box input when
+             draw mode is active (sits on top with z-index layering)
+         ============================================================ -->
     <main id="main-area">
+      <!-- Forge Viewer is injected into this container by viewer.js -->
       <div id="viewer-container"></div>
+      <!-- Canvas for displaying uploaded crack photos behind detection overlays -->
       <canvas id="photo-canvas" class="hidden"></canvas>
-      <!-- Manual draw overlay canvas -->
+      <!-- Transparent overlay canvas for manual crack bounding box drawing -->
       <canvas id="draw-canvas" class="hidden"></canvas>
     </main>
   </div>
 
-  <!-- Help Button -->
+  <!-- ============================================================
+       HELP BUTTON — Floating Action Button
+       Fixed-position circular button in the bottom-right corner.
+       Opens the Help Modal with onboarding instructions for new users.
+       ============================================================ -->
   <button id="help-btn">?</button>
 
-  <!-- ============================================================ -->
-  <!-- Help Modal -->
-  <!-- ============================================================ -->
+  <!-- ============================================================
+       MODAL 1: Help / Onboarding Modal
+       Introduces the user to "Jad," the application mascot, and
+       provides a quick-start guide covering the main workflows:
+       model upload, AI crack detection, manual drawing, evaluation,
+       and measurement calibration. Displayed on first visit or
+       when the user clicks the floating help button.
+       ============================================================ -->
   <div id="help-modal" class="modal-overlay hidden">
     <div class="modal-box">
       <button class="modal-close" id="help-close">&times;</button>
+
+      <!-- Avatar section: mascot image with a speech-bubble guide -->
       <div class="avatar-section">
         <img id="jad-avatar" src="jad.jpg" alt="Jad" onerror="this.src='https://api.dicebear.com/7.x/avataaars/svg?seed=Jad'">
         <div class="avatar-bubble">
@@ -109,25 +219,45 @@
     </div>
   </div>
 
-  <!-- ============================================================ -->
-  <!-- Evaluation Modal -->
-  <!-- ============================================================ -->
+  <!-- ============================================================
+       MODAL 2: Crack Evaluation Report
+       The most complex modal in the application. Allows engineers to
+       perform a structured assessment of a detected crack, including:
+         - Classification: structural location, material, crack type,
+           and activity status
+         - Dimensions: width, depth, and length in millimeters, with
+           computed core and repair volumes
+         - Environment risk factors: water proximity, seismic zone,
+           load-bearing status
+         - Repair method selection with unit cost estimation
+       The "Calculate & Assess" button runs a decision engine that
+       produces a verdict (Repair / Monitor / Demolish) with cost
+       estimates. Results can be saved to the 30-Day Report log.
+       ============================================================ -->
   <div id="eval-modal" class="modal-overlay hidden">
     <div class="modal-box modal-xl">
       <button class="modal-close" id="eval-close">&times;</button>
-      <h2>📋 Crack Evaluation Report</h2>
+      <h2>&#x1F4CB; Crack Evaluation Report</h2>
 
-      <!-- Detection selector -->
+      <!-- Detection selector: choose which detection to evaluate -->
       <div class="eval-section">
         <label>Evaluating detection:</label>
         <select id="eval-det-select"></select>
       </div>
 
+      <!-- Two-column evaluation grid: Classification (left) and Dimensions (right) -->
       <div class="eval-grid">
-        <!-- Left column — classification -->
+
+        <!-- ========================================================
+             LEFT COLUMN: Classification
+             Collects structural metadata about the crack to determine
+             severity and appropriate repair strategy. Options are
+             based on ACI, Eurocode, and industry classification schemes.
+             ======================================================== -->
         <div class="eval-col">
           <h3 class="eval-heading">Classification</h3>
 
+          <!-- Where the crack is located in the structure -->
           <label>Structural Location</label>
           <select id="eval-location">
             <option value="">-- Select --</option>
@@ -145,6 +275,7 @@
             <option value="other">Other</option>
           </select>
 
+          <!-- Construction material of the cracked element -->
           <label>Material</label>
           <select id="eval-material">
             <option value="">-- Select --</option>
@@ -158,10 +289,11 @@
             <option value="prestressed">Prestressed Concrete</option>
           </select>
 
+          <!-- Classification of the crack pattern and cause -->
           <label>Crack Type</label>
           <select id="eval-crack-type">
             <option value="">-- Select --</option>
-            <option value="shear">Shear Crack (diagonal, ~45°)</option>
+            <option value="shear">Shear Crack (diagonal, ~45&deg;)</option>
             <option value="flexural">Flexural / Moment Crack (vertical)</option>
             <option value="torsional">Torsional Crack (spiral)</option>
             <option value="shrinkage">Shrinkage / Plastic Crack (random map)</option>
@@ -173,6 +305,7 @@
             <option value="unknown">Unknown</option>
           </select>
 
+          <!-- Whether the crack is still propagating or stable -->
           <label>Crack Activity</label>
           <select id="eval-activity">
             <option value="active">Active (still growing)</option>
@@ -181,25 +314,34 @@
           </select>
         </div>
 
-        <!-- Right column — dimensions -->
+        <!-- ========================================================
+             RIGHT COLUMN: Dimensions & Environment Risk
+             Captures physical measurements (width, depth, length)
+             and computes repair volume. Also includes environmental
+             risk checkboxes that escalate the severity verdict.
+             ======================================================== -->
         <div class="eval-col">
           <h3 class="eval-heading">Dimensions</h3>
 
+          <!-- Crack width input in millimeters -->
           <label>Estimated Width (mm)</label>
           <div class="input-row">
             <input type="number" id="eval-width" placeholder="e.g. 0.3" min="0" step="0.01">
             <span class="unit">mm</span>
           </div>
 
+          <!-- Crack depth input, can be auto-filled from the Measure Depth tool -->
           <label>Estimated Depth (mm)
             <span class="label-hint">(use Measure Depth in viewer for accuracy)</span>
           </label>
           <div class="input-row">
             <input type="number" id="eval-depth" placeholder="e.g. 25" min="0" step="1">
             <span class="unit">mm</span>
+            <!-- Quick-fill button to import the last measured depth value -->
             <button class="btn-inline" id="eval-use-depth-btn" title="Use last measured depth">Use Measured</button>
           </div>
 
+          <!-- Crack length input, can be estimated from bounding box with calibration -->
           <label>Estimated Length (mm)
             <span class="label-hint">(from bbox; calibrate scale for accuracy)</span>
           </label>
@@ -208,17 +350,19 @@
             <span class="unit">mm</span>
           </div>
 
+          <!-- Computed volume display: core volume and repair volume (+25% overhead) -->
           <div class="vol-box" id="vol-display">
             <div class="vol-row">
-              <span>Core Volume (L×W×D):</span>
-              <span id="vol-core">—</span>
+              <span>Core Volume (L&times;W&times;D):</span>
+              <span id="vol-core">&mdash;</span>
             </div>
             <div class="vol-row">
               <span>Repair Volume (+25% process):</span>
-              <span id="vol-repair">—</span>
+              <span id="vol-repair">&mdash;</span>
             </div>
           </div>
 
+          <!-- Environment risk factors that affect the severity assessment -->
           <h3 class="eval-heading" style="margin-top:14px">Environment Risk</h3>
           <label>
             <input type="checkbox" id="eval-near-water"> Near water body / reservoir / dam
@@ -232,11 +376,17 @@
         </div>
       </div>
 
-      <!-- Repair section -->
+      <!-- ==========================================================
+           Repair Method & Cost Estimation Section
+           Suggests a repair method based on crack classification and
+           lets the user override with a manual selection. Unit cost
+           is used to compute the total estimated repair cost.
+           ========================================================== -->
       <div class="eval-section" style="margin-top:16px">
         <h3 class="eval-heading">Repair Method</h3>
         <div class="repair-grid">
           <div>
+            <!-- Repair method dropdown based on industry-standard techniques -->
             <label>Suggested Repair</label>
             <select id="eval-repair-method">
               <option value="epoxy_injection">Epoxy Injection</option>
@@ -251,6 +401,7 @@
             </select>
           </div>
           <div>
+            <!-- Unit cost for cost estimation; unit changes based on repair method -->
             <label>Unit Cost ($/litre or $/m depending on method)</label>
             <div class="input-row">
               <input type="number" id="eval-unit-cost" placeholder="e.g. 150" min="0" step="1">
@@ -259,33 +410,48 @@
           </div>
         </div>
 
+        <!-- Free-text notes for additional observations (e.g., rebar exposure, staining) -->
         <label>Additional Notes</label>
         <textarea id="eval-notes" rows="2" placeholder="e.g. Visible rebar corrosion, crack widens after rain..."></textarea>
       </div>
 
-      <!-- Verdict -->
+      <!-- ==========================================================
+           Verdict Display
+           Rendered after the user clicks "Calculate & Assess."
+           Shows a color-coded verdict badge (REPAIR / MONITOR / DEMOLISH),
+           a detailed explanation, and the estimated repair cost.
+           Hidden by default until calculation completes.
+           ========================================================== -->
       <div id="eval-verdict" class="verdict-box hidden">
-        <div id="verdict-badge" class="verdict-badge">—</div>
+        <div id="verdict-badge" class="verdict-badge">&mdash;</div>
         <div id="verdict-detail" class="verdict-detail"></div>
         <div id="verdict-cost" class="verdict-cost"></div>
       </div>
 
+      <!-- Action buttons: calculate verdict, save to report, or cancel -->
       <div class="eval-actions">
-        <button id="eval-calc-btn" class="btn-calc">⚡ Calculate &amp; Assess</button>
-        <button id="eval-save-btn" class="btn-save">💾 Save to Report</button>
+        <button id="eval-calc-btn" class="btn-calc">&#x26A1; Calculate &amp; Assess</button>
+        <button id="eval-save-btn" class="btn-save">&#x1F4BE; Save to Report</button>
         <button class="modal-close-btn" id="eval-cancel">Cancel</button>
       </div>
     </div>
   </div>
 
-  <!-- ============================================================ -->
-  <!-- Danger Reference Modal -->
-  <!-- ============================================================ -->
+  <!-- ============================================================
+       MODAL 3: Crack Danger Reference Guide
+       A tabbed reference modal providing engineers with quick access
+       to crack severity thresholds, crack type descriptions, reservoir/
+       dam-specific risks, and international repair standards. Content
+       is sourced from ACI, Eurocode, ICOLD, and USBR guidelines.
+       Four tabs: Severity Thresholds, Crack Types, Reservoirs & Dams,
+       and Standards.
+       ============================================================ -->
   <div id="danger-modal" class="modal-overlay hidden">
     <div class="modal-box modal-xl">
       <button class="modal-close" id="danger-close">&times;</button>
-      <h2>⚠️ Crack Danger Reference Guide</h2>
+      <h2>&#x26A0;&#xFE0F; Crack Danger Reference Guide</h2>
 
+      <!-- Tab navigation bar -->
       <div class="danger-tabs">
         <button class="dtab active" data-tab="severity">Severity Thresholds</button>
         <button class="dtab" data-tab="types">Crack Types</button>
@@ -293,7 +459,12 @@
         <button class="dtab" data-tab="standards">Standards</button>
       </div>
 
-      <!-- Severity tab -->
+      <!-- ==========================================================
+           TAB 1: Severity Thresholds
+           Color-coded tables classifying crack width and depth into
+           severity levels (Hairline through Very Wide) with
+           recommended actions per ACI 224R-01 and Eurocode 2.
+           ========================================================== -->
       <div class="dtab-content active" id="tab-severity">
         <h3>Crack Width — Severity Classification</h3>
         <table class="danger-table">
@@ -320,12 +491,17 @@
         </table>
       </div>
 
-      <!-- Types tab -->
+      <!-- ==========================================================
+           TAB 2: Crack Types
+           Card-based grid showing eight common crack types with
+           descriptions, structural risk levels, and color-coded
+           severity tags. Helps engineers identify crack patterns.
+           ========================================================== -->
       <div class="dtab-content hidden" id="tab-types">
         <div class="crack-type-grid">
           <div class="crack-card sev-orange-border">
             <h4>Shear Crack</h4>
-            <p>Diagonal (≈45°) near supports in beams/columns. Indicates shear force exceeds capacity. <strong>High structural risk</strong> — can cause sudden brittle failure.</p>
+            <p>Diagonal (&asymp;45&deg;) near supports in beams/columns. Indicates shear force exceeds capacity. <strong>High structural risk</strong> — can cause sudden brittle failure.</p>
             <span class="crack-tag red">Critical if widening</span>
           </div>
           <div class="crack-card sev-yellow-border">
@@ -366,10 +542,18 @@
         </div>
       </div>
 
-      <!-- Reservoirs tab -->
+      <!-- ==========================================================
+           TAB 3: Reservoirs & Dams
+           Specialized guidance for water-retaining structures where
+           cracks pose catastrophic risks (piping, internal erosion,
+           uncontrolled release). Includes a prominent safety warning,
+           risk tables by location, key reference standards (ICOLD,
+           USBR, FERC), and piping/erosion warning signs.
+           ========================================================== -->
       <div class="dtab-content hidden" id="tab-reservoirs">
+        <!-- Critical safety warning banner for life-safety structures -->
         <div class="reservoir-warning">
-          <span class="warn-icon">🚨</span>
+          <span class="warn-icon">&#x1F6A8;</span>
           <strong>Cracks in reservoir walls, dam faces, and spillways require IMMEDIATE specialist inspection. Do not rely solely on AI detection for life-safety decisions.</strong>
         </div>
 
@@ -377,12 +561,12 @@
         <table class="danger-table">
           <thead><tr><th>Location</th><th>Crack Type</th><th>Risk</th><th>Action</th></tr></thead>
           <tbody>
-            <tr class="sev-critical"><td>Dam Face (upstream)</td><td>Any through-crack</td><td>🔴 CRITICAL</td><td>Immediate drawdown; emergency inspection</td></tr>
-            <tr class="sev-red"><td>Dam Crest</td><td>Longitudinal crack</td><td>🔴 HIGH</td><td>Monitor settlement; geotechnical survey</td></tr>
-            <tr class="sev-red"><td>Spillway Slab</td><td>Transverse crack</td><td>🔴 HIGH</td><td>Risk of slab uplift under flow; restrict operation</td></tr>
-            <tr class="sev-orange"><td>Retaining Wall</td><td>Horizontal crack</td><td>🟠 HIGH</td><td>Check backfill pressure; possible shear failure</td></tr>
-            <tr class="sev-orange"><td>Outlet Works</td><td>Any crack</td><td>🟠 HIGH</td><td>Risk of internal erosion/piping; inspect</td></tr>
-            <tr class="sev-yellow"><td>Stilling Basin</td><td>Surface crack</td><td>🟡 MODERATE</td><td>Cavitation risk; seal before next operation</td></tr>
+            <tr class="sev-critical"><td>Dam Face (upstream)</td><td>Any through-crack</td><td>&#x1F534; CRITICAL</td><td>Immediate drawdown; emergency inspection</td></tr>
+            <tr class="sev-red"><td>Dam Crest</td><td>Longitudinal crack</td><td>&#x1F534; HIGH</td><td>Monitor settlement; geotechnical survey</td></tr>
+            <tr class="sev-red"><td>Spillway Slab</td><td>Transverse crack</td><td>&#x1F534; HIGH</td><td>Risk of slab uplift under flow; restrict operation</td></tr>
+            <tr class="sev-orange"><td>Retaining Wall</td><td>Horizontal crack</td><td>&#x1F7E0; HIGH</td><td>Check backfill pressure; possible shear failure</td></tr>
+            <tr class="sev-orange"><td>Outlet Works</td><td>Any crack</td><td>&#x1F7E0; HIGH</td><td>Risk of internal erosion/piping; inspect</td></tr>
+            <tr class="sev-yellow"><td>Stilling Basin</td><td>Surface crack</td><td>&#x1F7E1; MODERATE</td><td>Cavitation risk; seal before next operation</td></tr>
           </tbody>
         </table>
 
@@ -406,7 +590,12 @@
         </ul>
       </div>
 
-      <!-- Standards tab -->
+      <!-- ==========================================================
+           TAB 4: Standards & Repair Decision Matrix
+           A quick-reference decision matrix mapping crack conditions
+           to recommended repair actions, plus a list of international
+           engineering standards referenced throughout the application.
+           ========================================================== -->
       <div class="dtab-content hidden" id="tab-standards">
         <h3>Repair Decision Matrix</h3>
         <table class="danger-table">
@@ -437,18 +626,30 @@
     </div>
   </div>
 
-  <!-- ============================================================ -->
-  <!-- 30-Day Report Modal -->
-  <!-- ============================================================ -->
+  <!-- ============================================================
+       MODAL 4: 30-Day Inspection Report
+       Displays a rolling 30-day history of all saved crack evaluations.
+       Each entry shows the date, number of detections, and saved
+       verdict details. Data is persisted in localStorage. The "Clear
+       History" button wipes all stored report data.
+       ============================================================ -->
   <div id="report-modal" class="modal-overlay hidden">
     <div class="modal-box modal-wide">
       <button class="modal-close" id="report-close">&times;</button>
       <h2>30-Day Inspection Report</h2>
+      <!-- Report entries are dynamically injected here by viewer.js -->
       <div id="report-content"></div>
       <button id="report-clear-btn">Clear History</button>
     </div>
   </div>
 
+  <!-- ============================================================
+       EXTERNAL SCRIPTS
+       - Autodesk Forge Viewer v7: provides the WebGL-based 3D model
+         rendering engine and built-in measurement/navigation tools
+       - viewer.js: application logic — model management, AI detection
+         pipeline, evaluation engine, calibration, and all UI bindings
+       ============================================================ -->
   <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.js"></script>
   <script src="viewer.js"></script>
 </body>

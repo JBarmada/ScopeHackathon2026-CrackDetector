@@ -1,3 +1,23 @@
+/* ================================================================
+   CRACK JAD — Application Stylesheet
+   ================================================================
+   Dark-themed UI for the Autodesk Crack Inspector hackathon project.
+   Layout: fixed-width sidebar (320px) + flexible 3D viewer area.
+   Color palette:
+     - Background:  #1a1a2e (deep navy)
+     - Panels:      #16213e (dark blue-grey)
+     - Accent:      #e94560 (coral red — used for headings, buttons, highlights)
+     - Interactive:  #0f3460 (navy blue — inputs, secondary buttons)
+     - Purple:      #533483 (used for borders and tertiary actions)
+   ================================================================ */
+/*
+  style.css — Crack Jad visual system
+  -----------------------------------
+  Defines layout, theme colors, modal styles, detection overlays,
+  and responsive behavior for the Autodesk viewer UI.
+*/
+
+/* Global reset and base layout primitives */
 * {
   margin: 0;
   padding: 0;
@@ -12,12 +32,28 @@ body {
   height: 100vh;
 }
 
+/* Custom dark scrollbar for the entire app */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #533483; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #6a42a0; }
+
+/* ================================================================
+   APPLICATION LAYOUT
+   Flexbox container splits the viewport horizontally into the
+   sidebar (fixed 320px) and the main viewer area (flex: 1).
+   ================================================================ */
 #app {
   display: flex;
   height: 100vh;
 }
 
-/* Sidebar */
+/* ================================================================
+   SIDEBAR
+   Fixed-width left panel containing all controls. Scrolls
+   independently via overflow-y: auto. Separated from the viewer
+   by a subtle navy border.
+   ================================================================ */
 #sidebar {
   width: 320px;
   min-width: 320px;
@@ -27,33 +63,58 @@ body {
   border-right: 1px solid #0f3460;
 }
 
+/* Sidebar title: gradient accent with glow */
 #sidebar h1 {
-  font-size: 1.4rem;
-  color: #e94560;
+  font-size: 1.5rem;
+  background: linear-gradient(135deg, #e94560, #ff6b81);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid #0f3460;
+  padding-bottom: 12px;
+  border-bottom: 2px solid transparent;
+  border-image: linear-gradient(90deg, #e94560, #533483, transparent) 1;
+  letter-spacing: 0.5px;
 }
 
+/* ================================================================
+   PANEL CARDS
+   Each .panel is a rounded, bordered card within the sidebar that
+   groups related controls (model management, measurement, detection).
+   Dark background with navy border for visual separation.
+   ================================================================ */
 .panel {
-  background: #1a1a2e;
-  border-radius: 8px;
+  background: linear-gradient(145deg, #1a1a2e, #1e1e36);
+  border-radius: 10px;
   padding: 16px;
-  margin-bottom: 16px;
-  border: 1px solid #0f3460;
+  margin-bottom: 14px;
+  border: 1px solid rgba(15,52,96,0.6);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.panel:hover {
+  border-color: rgba(83,52,131,0.5);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
+/* Panel headings: coral accent, smaller size for hierarchy */
 .panel h2 {
   font-size: 1rem;
   color: #e94560;
   margin-bottom: 12px;
 }
 
+/* Panel sub-headings for nested sections */
 .panel h3 {
   font-size: 0.9rem;
   margin: 12px 0 8px;
 }
 
+/* ================================================================
+   FORM ELEMENTS — Labels, Inputs, Selects, Range Sliders
+   Consistent styling for all form controls within the sidebar.
+   Muted label color (#a0a0c0) provides visual hierarchy.
+   ================================================================ */
 label {
   display: block;
   font-size: 0.85rem;
@@ -61,114 +122,195 @@ label {
   color: #a0a0c0;
 }
 
+/* Native file picker and form controls */
 input[type="file"] {
   font-size: 0.8rem;
   width: 100%;
   margin-bottom: 8px;
 }
 
+/* Dropdown selects: dark navy background with purple border */
 select {
   width: 100%;
-  padding: 6px 8px;
+  padding: 7px 10px;
   background: #0f3460;
   color: #e0e0e0;
-  border: 1px solid #533483;
-  border-radius: 4px;
+  border: 1px solid rgba(83,52,131,0.5);
+  border-radius: 6px;
   font-size: 0.85rem;
   margin-bottom: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
 }
+select:hover { border-color: #533483; }
+select:focus { outline: none; border-color: #e94560; box-shadow: 0 0 0 2px rgba(233,69,96,0.15); }
 
+/* Custom range slider */
 input[type="range"] {
   width: 100%;
   margin: 4px 0 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: linear-gradient(90deg, #e94560, #533483);
+  border-radius: 3px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e94560;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(233,69,96,0.4);
+  transition: transform 0.15s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e94560;
+  cursor: pointer;
+  border: none;
 }
 
+/* ================================================================
+   BUTTONS — Primary Action Buttons
+   Full-width coral buttons with smooth hover transitions.
+   Disabled state uses dark grey to indicate non-interactive.
+   ================================================================ */
 button {
   width: 100%;
-  padding: 8px 12px;
-  background: #e94560;
+  padding: 9px 14px;
+  background: linear-gradient(135deg, #e94560, #d63a55);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   font-weight: 600;
   margin-bottom: 6px;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(233,69,96,0.2);
+  letter-spacing: 0.2px;
 }
 
 button:hover:not(:disabled) {
-  background: #c73050;
+  background: linear-gradient(135deg, #d63a55, #c73050);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(233,69,96,0.3);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(233,69,96,0.2);
 }
 
 button:disabled {
-  background: #444;
+  background: #333;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
+/* ================================================================
+   BUTTON VARIANTS — Color-coded by action type
+   Each button variant uses a distinct background color to convey
+   its purpose at a glance (purple = clear, navy = refresh,
+   dark red = destructive delete, muted = unload).
+   ================================================================ */
+
+/* Clear overlays: purple to distinguish from primary actions */
 #clear-overlays-btn {
   background: #533483;
 }
-
 #clear-overlays-btn:hover {
   background: #6a42a0;
 }
 
+/* Refresh model list: navy blue, non-destructive action */
 #refresh-models-btn {
   background: #0f3460;
 }
-
 #refresh-models-btn:hover {
   background: #1a4a80;
 }
 
+/* Delete model: dark red to signal destructive action */
 #delete-model-btn {
   background: #4a1a1a;
 }
-
 #delete-model-btn:hover:not(:disabled) {
   background: #6a2a2a;
 }
 
+/* Unload model: muted dark blue, reversible action */
 #unload-model-btn {
   background: #2a2a4a;
 }
-
 #unload-model-btn:hover:not(:disabled) {
   background: #3a3a6a;
 }
 
+/* ================================================================
+   UPLOAD GROUP
+   Wrapper for file input + action button pairs, providing
+   consistent bottom spacing.
+   ================================================================ */
 .upload-group {
   margin-bottom: 8px;
 }
 
+/* ================================================================
+   STATUS MESSAGES
+   Small, rounded status bars used throughout the sidebar to display
+   feedback (upload progress, errors, calibration state). Three
+   variants: info (blue), success (green), error (red).
+   ================================================================ */
 .status {
   font-size: 0.8rem;
-  padding: 6px;
-  border-radius: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
   margin: 8px 0;
   min-height: 20px;
+  border-left: 3px solid transparent;
+  transition: all 0.3s ease;
 }
 
-.status.info { background: #0f3460; color: #70a0d0; }
-.status.success { background: #1a4a2e; color: #70d070; }
-.status.error { background: #4a1a1a; color: #d07070; }
+.status.info    { background: rgba(15,52,96,0.6); color: #70a0d0; border-left-color: #70a0d0; }
+.status.success { background: rgba(26,74,46,0.6); color: #70d070; border-left-color: #70d070; }
+.status.error   { background: rgba(74,26,26,0.6); color: #d07070; border-left-color: #d07070; }
 
+/* ================================================================
+   UTILITY CLASS — Hidden
+   Forces display: none with !important to reliably hide elements
+   regardless of their default display value.
+   ================================================================ */
 .hidden { display: none !important; }
 
-/* Main Viewer Area */
+/* ================================================================
+   MAIN VIEWER AREA
+   The flexible right panel that houses the Autodesk Forge 3D viewer.
+   Uses position: relative to serve as the containing block for
+   absolutely-positioned overlay canvases (photo + draw).
+   ================================================================ */
 #main-area {
   flex: 1;
   position: relative;
-  background: #0a0a1a;
+  background: radial-gradient(ellipse at center, #111128 0%, #0a0a1a 70%);
 }
 
+/* Forge Viewer container: fills the entire main area */
 #viewer-container {
   width: 100%;
   height: 100%;
   position: relative;
 }
 
+/* Photo canvas: overlays the viewer to display uploaded crack images */
 #photo-canvas {
   position: absolute;
   top: 0;
@@ -178,7 +320,13 @@ button:disabled {
   object-fit: contain;
 }
 
-/* Detection Overlay */
+/* ================================================================
+   DETECTION OVERLAY BOXES
+   Absolutely-positioned bounding boxes rendered on top of the viewer
+   or photo canvas to highlight detected cracks. Three severity tiers
+   with color-coded borders: red (high), orange (medium), green (low).
+   pointer-events: none ensures they don't block viewer interaction.
+   ================================================================ */
 .detection-box {
   position: absolute;
   border: 2px solid;
@@ -186,78 +334,118 @@ button:disabled {
   z-index: 100;
 }
 
+/* High confidence: red border — most critical detections */
 .detection-box.high { border-color: #ff3030; }
+/* Medium confidence: orange border */
 .detection-box.medium { border-color: #ffaa00; }
+/* Low confidence: green border — least critical */
 .detection-box.low { border-color: #30ff30; }
 
+/* Detection label: floats above the bounding box showing class + confidence */
 .detection-label {
   position: absolute;
-  top: -20px;
+  top: -22px;
   left: 0;
   font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 2px;
+  padding: 3px 8px;
+  border-radius: 4px;
   white-space: nowrap;
   font-weight: bold;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.3px;
 }
 
+/* Label backgrounds match their severity tier */
 .detection-box.high .detection-label { background: #ff3030; color: white; }
 .detection-box.medium .detection-label { background: #ffaa00; color: black; }
 .detection-box.low .detection-label { background: #30ff30; color: black; }
 
-/* Results list */
+/* ================================================================
+   DETECTION RESULTS LIST
+   Scrollable list in the sidebar showing each detected crack with
+   its confidence score. Items are clickable to select a detection
+   for evaluation. Max height prevents the sidebar from overflowing.
+   ================================================================ */
 #results-list {
   max-height: 200px;
   overflow-y: auto;
   font-size: 0.8rem;
 }
 
+/* Individual result item: row layout with class name on left, confidence on right */
 .result-item {
-  padding: 6px;
+  padding: 8px 10px;
   margin: 4px 0;
-  background: #0f3460;
-  border-radius: 4px;
+  background: rgba(15,52,96,0.5);
+  border-radius: 6px;
   display: flex;
   justify-content: space-between;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.result-item:hover {
+  border-color: rgba(233,69,96,0.3);
+  background: rgba(15,52,96,0.8);
 }
 
+/* Confidence score text, color-coded by severity */
 .result-item .conf {
   font-weight: bold;
 }
-
 .result-item .conf.high { color: #ff3030; }
 .result-item .conf.medium { color: #ffaa00; }
 .result-item .conf.low { color: #30ff30; }
 
-/* Help button */
+/* ================================================================
+   HELP BUTTON — Floating Action Button (FAB)
+   Fixed in the bottom-right corner. Circular coral button with a
+   "?" icon. Scales up on hover for discoverability. High z-index
+   ensures it floats above all other content.
+   ================================================================ */
 #help-btn {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: #e94560;
+  background: linear-gradient(135deg, #e94560, #ff6b81);
   color: white;
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   font-weight: bold;
   border: none;
   cursor: pointer;
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-  transition: transform 0.2s, background 0.2s;
+  box-shadow: 0 4px 20px rgba(233,69,96,0.4), 0 0 40px rgba(233,69,96,0.1);
+  transition: transform 0.25s, box-shadow 0.25s;
+  animation: helpGlow 3s ease-in-out infinite;
 }
 
-#help-btn:hover { background: #c73050; transform: scale(1.1); }
+@keyframes helpGlow {
+  0%, 100% { box-shadow: 0 4px 20px rgba(233,69,96,0.4), 0 0 40px rgba(233,69,96,0.1); }
+  50% { box-shadow: 0 4px 20px rgba(233,69,96,0.6), 0 0 60px rgba(233,69,96,0.2); }
+}
 
-/* Report button */
+#help-btn:hover { transform: scale(1.15); box-shadow: 0 6px 24px rgba(233,69,96,0.5); }
+
+/* ================================================================
+   30-DAY REPORT BUTTON
+   Purple variant matching the "Clear Overlays" button color to
+   visually group utility actions together.
+   ================================================================ */
 #report-btn {
   background: #533483;
   margin-bottom: 6px;
 }
 #report-btn:hover { background: #6a42a0; }
 
-/* Modals */
+/* ================================================================
+   MODAL SYSTEM — Shared Modal Styles
+   All modals use a semi-transparent black overlay (.modal-overlay)
+   centered with flexbox. The .modal-box provides the content card
+   with dark background, rounded corners, and internal scroll.
+   z-index: 2000 ensures modals sit above all other UI elements.
+   ================================================================ */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -268,20 +456,31 @@ button:disabled {
   justify-content: center;
 }
 
+/* Modal content card: frosted glass panel */
 .modal-box {
-  background: #16213e;
-  border: 1px solid #0f3460;
-  border-radius: 12px;
+  background: rgba(22,33,62,0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(83,52,131,0.3);
+  border-radius: 16px;
   padding: 28px;
   max-width: 480px;
   width: 90%;
   position: relative;
   max-height: 80vh;
   overflow-y: auto;
+  box-shadow: 0 16px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  animation: modalIn 0.25s ease-out;
 }
 
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Wider variant for modals with more content (e.g., 30-Day Report) */
 .modal-wide { max-width: 640px; }
 
+/* Modal close button (X): positioned top-right, no background */
 .modal-close {
   position: absolute;
   top: 12px;
@@ -298,13 +497,23 @@ button:disabled {
 
 .modal-close:hover { color: #e94560; background: none; }
 
+/* Modal headings: gradient accent for emphasis */
 .modal-box h2 {
-  color: #e94560;
+  background: linear-gradient(135deg, #e94560, #ff6b81);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 16px;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
+  letter-spacing: 0.3px;
 }
 
-/* Jad avatar */
+/* ================================================================
+   HELP MODAL — Jad Avatar Section
+   Vertically centered layout with the mascot avatar image and a
+   speech-bubble styled instruction card. The avatar has a glowing
+   coral border ring for visual emphasis.
+   ================================================================ */
 .avatar-section {
   display: flex;
   flex-direction: column;
@@ -312,15 +521,22 @@ button:disabled {
   gap: 16px;
 }
 
+/* Mascot avatar: circular with animated coral glow ring */
 #jad-avatar {
   width: 200px;
   height: 200px;
   border-radius: 50%;
   object-fit: cover;
   border: 4px solid #e94560;
-  box-shadow: 0 0 24px rgba(233,69,96,0.4);
+  box-shadow: 0 0 30px rgba(233,69,96,0.4), 0 0 60px rgba(233,69,96,0.1);
+  animation: avatarGlow 4s ease-in-out infinite;
+}
+@keyframes avatarGlow {
+  0%, 100% { box-shadow: 0 0 30px rgba(233,69,96,0.4), 0 0 60px rgba(233,69,96,0.1); }
+  50%      { box-shadow: 0 0 40px rgba(233,69,96,0.6), 0 0 80px rgba(233,69,96,0.2); }
 }
 
+/* Speech bubble: dark card containing onboarding instructions */
 .avatar-bubble {
   background: #1a1a2e;
   border-radius: 8px;
@@ -330,12 +546,14 @@ button:disabled {
   border: 1px solid #0f3460;
 }
 
+/* Greeting text inside the bubble */
 .avatar-bubble p {
   color: #e94560;
   font-weight: bold;
   margin-bottom: 8px;
 }
 
+/* Instruction list inside the bubble */
 .avatar-bubble ul {
   padding-left: 16px;
   color: #c0c0d0;
@@ -343,22 +561,34 @@ button:disabled {
 
 .avatar-bubble li { margin-bottom: 4px; }
 
-/* 30-day report */
+/* ================================================================
+   30-DAY REPORT — Report Entry Cards
+   Each .report-day represents one day's inspection summary with a
+   coral left border accent. Contains date, detection count (color-
+   coded: green=zero, orange=low, red=high), and saved verdict data.
+   ================================================================ */
 .report-day {
-  padding: 10px 12px;
+  padding: 10px 14px;
   margin: 6px 0;
-  background: #1a1a2e;
-  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(26,26,46,0.8), rgba(30,30,54,0.8));
+  border-radius: 8px;
   border-left: 3px solid #e94560;
   font-size: 0.85rem;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.report-day:hover {
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
+/* Date label within each report entry */
 .report-day .report-date {
   color: #a0a0c0;
   font-size: 0.75rem;
   margin-bottom: 4px;
 }
 
+/* Detection count, color-coded by severity */
 .report-day .report-count {
   font-weight: bold;
   color: #e0e0e0;
@@ -368,38 +598,52 @@ button:disabled {
 .report-day .report-count.low  { color: #ffaa00; }
 .report-day .report-count.high { color: #ff3030; }
 
+/* Clear history button: dark red to signal destructive action */
 #report-clear-btn {
   background: #4a1a1a;
   margin-top: 16px;
 }
 #report-clear-btn:hover { background: #6a2a2a; }
 
-/* ============================================================
-   Measurement Panel
-   ============================================================ */
+/* ================================================================
+   MEASUREMENT PANEL — Calibration & Depth Tools
+   Teal-colored buttons for measurement actions to visually
+   distinguish them from detection controls. The .active-tool class
+   applies a pulsing coral animation to indicate an active tool mode
+   (e.g., waiting for the user to pick points on the model).
+   ================================================================ */
 #calibrate-btn { background: #0f5460; }
 #calibrate-btn:hover:not(:disabled) { background: #1a7080; }
 #sync-aps-cal-btn { background: #1a4060; }
 #sync-aps-cal-btn:hover:not(:disabled) { background: #2a6080; }
 #measure-depth-btn { background: #0f5460; }
 #measure-depth-btn:hover:not(:disabled) { background: #1a7080; }
+
+/* Active tool state: pulsing coral to indicate "awaiting input" */
 #calibrate-btn.active-tool, #measure-depth-btn.active-tool {
   background: #e94560;
   animation: pulse 1.2s infinite;
 }
+
+/* Pulse animation keyframes for active measurement tools */
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 
+/* Depth measurement result display */
 .depth-label { font-size:0.8rem; color:#a0a0c0; }
 .depth-value { font-size:1.1rem; font-weight:bold; color:#70d0ff; margin-left:8px; }
 #depth-result { padding:8px 6px; }
 
-/* ============================================================
-   Detection result items — clickable for evaluation
-   ============================================================ */
+/* ================================================================
+   DETECTION RESULT ITEMS — Interactive Selection
+   Result items are clickable to select a detection for evaluation.
+   Hover highlights in brighter blue; selected state adds a coral
+   left border accent for clear visual feedback.
+   ================================================================ */
 .result-item { cursor: pointer; transition: background 0.15s; }
 .result-item:hover { background: #1a4a80; }
 .result-item.selected { background: #1a4a80; border-left: 3px solid #e94560; }
 
+/* Count badge: coral pill shape used next to "Detections" heading */
 .badge {
   display: inline-block;
   background: #e94560;
@@ -410,15 +654,21 @@ button:disabled {
   vertical-align: middle;
 }
 
+/* Evaluate button: green to indicate a positive/constructive action */
 .btn-evaluate { background: #1a4a2e; margin-top:8px; }
 .btn-evaluate:hover { background: #2a6a3e; }
 
+/* Danger info button: dark amber to signal caution-related content */
 .btn-danger-info { background: #4a2a00; }
 .btn-danger-info:hover { background: #6a4000; }
 
-/* ============================================================
-   Manual Draw
-   ============================================================ */
+/* ================================================================
+   MANUAL DRAW MODE
+   The #draw-canvas is an absolutely-positioned transparent overlay
+   that sits on top of the viewer with a crosshair cursor. Users
+   click-and-drag to draw bounding boxes for manual crack annotation.
+   The hint bar provides instructions in amber/warning style.
+   ================================================================ */
 #draw-canvas {
   position: absolute;
   top: 0; left: 0;
@@ -426,10 +676,14 @@ button:disabled {
   cursor: crosshair;
   z-index: 150;
 }
+
+/* Draw mode toggle button: olive/dark yellow when inactive */
 #draw-mode-btn { background: #2a2a0f; }
 #draw-mode-btn:hover { background: #4a4a1a; }
+/* Active state matches the coral pulsing pattern */
 #draw-mode-btn.active-tool { background: #e94560; }
 
+/* Instructional hint shown when draw mode is active */
 .draw-hint {
   font-size: 0.75rem;
   color: #ffaa00;
@@ -439,14 +693,18 @@ button:disabled {
   margin-bottom: 6px;
 }
 
-/* ============================================================
-   Evaluation Modal
-   ============================================================ */
+/* ================================================================
+   EVALUATION MODAL — Extended Layout
+   The evaluation modal uses .modal-xl for a wider max-width (820px)
+   to accommodate the two-column classification + dimensions grid.
+   Responsive: collapses to single column below 700px viewport width.
+   ================================================================ */
 .modal-xl {
   max-width: 820px;
   width: 95%;
 }
 
+/* Two-column grid layout for classification (left) and dimensions (right) */
 .eval-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -454,12 +712,15 @@ button:disabled {
   margin-top: 12px;
 }
 
+/* Responsive: stack columns vertically on narrow screens */
 @media (max-width: 700px) {
   .eval-grid { grid-template-columns: 1fr; }
 }
 
+/* Column container: vertical flex layout with tight spacing */
 .eval-col { display: flex; flex-direction: column; gap: 4px; }
 
+/* Section headings within the evaluation modal */
 .eval-heading {
   font-size: 0.9rem;
   color: #e94560;
@@ -468,8 +729,15 @@ button:disabled {
   border-bottom: 1px solid #0f3460;
 }
 
+/* Generic section wrapper for consistent bottom spacing */
 .eval-section { margin-bottom: 12px; }
 
+/* ================================================================
+   INPUT ROW — Inline Input + Unit Label Layout
+   Used for dimension inputs (width, depth, length, cost) where
+   the numeric input sits alongside a unit label (mm, $/L) and
+   optionally an inline action button ("Use Measured").
+   ================================================================ */
 .input-row {
   display: flex;
   align-items: center;
@@ -477,24 +745,33 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+/* Number inputs within input rows: dark navy background */
 .input-row input[type="number"] {
   flex: 1;
-  padding: 6px 8px;
+  padding: 7px 10px;
   background: #0f3460;
   color: #e0e0e0;
-  border: 1px solid #533483;
-  border-radius: 4px;
+  border: 1px solid rgba(83,52,131,0.5);
+  border-radius: 6px;
   font-size: 0.85rem;
   width: auto;
   margin: 0;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-row input[type="number"]:focus {
+  outline: none;
+  border-color: #e94560;
+  box-shadow: 0 0 0 2px rgba(233,69,96,0.15);
 }
 
+/* Unit label (mm, $/L) next to numeric inputs */
 .unit {
   font-size: 0.8rem;
   color: #a0a0c0;
   white-space: nowrap;
 }
 
+/* Small inline action button (e.g., "Use Measured" for depth) */
 .btn-inline {
   padding: 4px 8px;
   font-size: 0.75rem;
@@ -509,18 +786,25 @@ button:disabled {
 }
 .btn-inline:hover { background: #6a42a0; }
 
+/* Subtle hint text below labels (e.g., calibration tips) */
 .label-hint {
   font-size: 0.7rem;
   color: #666;
   font-weight: normal;
 }
 
+/* ================================================================
+   VOLUME DISPLAY BOX
+   Shows computed crack volume (core and repair) in a bordered card.
+   Core volume = Length x Width x Depth. Repair volume adds a 25%
+   overhead factor for process waste. Values highlighted in cyan.
+   ================================================================ */
 .vol-box {
-  background: #0f3460;
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-top: 6px;
-  border: 1px solid #533483;
+  background: linear-gradient(135deg, rgba(15,52,96,0.6), rgba(83,52,131,0.2));
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  border: 1px solid rgba(83,52,131,0.4);
 }
 .vol-row {
   display: flex;
@@ -529,17 +813,28 @@ button:disabled {
   padding: 3px 0;
   color: #c0c0d0;
 }
+/* Computed values displayed in cyan for emphasis */
 .vol-row span:last-child {
   font-weight: bold;
   color: #70d0ff;
 }
 
+/* ================================================================
+   CHECKBOX STYLING
+   Inline checkboxes for environment risk factors. Auto width
+   prevents full-width stretching from the global button styles.
+   ================================================================ */
 input[type="checkbox"] {
   width: auto;
   margin-right: 6px;
   vertical-align: middle;
 }
 
+/* ================================================================
+   REPAIR METHOD GRID
+   Two-column layout for the repair method dropdown and unit cost
+   input, keeping the repair section compact and scannable.
+   ================================================================ */
 .repair-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -547,30 +842,51 @@ input[type="checkbox"] {
   margin-bottom: 10px;
 }
 
+/* Textarea for additional notes: matches the dark input theme */
 textarea {
   width: 100%;
-  padding: 8px;
+  padding: 8px 10px;
   background: #0f3460;
   color: #e0e0e0;
-  border: 1px solid #533483;
-  border-radius: 4px;
+  border: 1px solid rgba(83,52,131,0.5);
+  border-radius: 6px;
   font-size: 0.85rem;
   resize: vertical;
   font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+textarea:focus {
+  outline: none;
+  border-color: #e94560;
+  box-shadow: 0 0 0 2px rgba(233,69,96,0.15);
 }
 
-/* Verdict */
+/* ================================================================
+   VERDICT DISPLAY BOX
+   Appears after the user clicks "Calculate & Assess." Color-coded
+   border and background indicate the assessment outcome:
+     - repair (green): crack is repairable
+     - monitor (orange): monitor and reassess later
+     - demolish (red): structural element must be replaced
+   Contains a large badge, detail text, and estimated cost.
+   ================================================================ */
 .verdict-box {
   margin-top: 16px;
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 20px;
   border: 2px solid;
   text-align: center;
+  animation: verdictIn 0.4s ease-out;
 }
-.verdict-box.repair  { border-color: #30ff30; background: rgba(48,255,48,0.07); }
-.verdict-box.monitor { border-color: #ffaa00; background: rgba(255,170,0,0.07); }
-.verdict-box.demolish{ border-color: #ff3030; background: rgba(255,48,48,0.1); }
+@keyframes verdictIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.verdict-box.repair  { border-color: #30ff30; background: rgba(48,255,48,0.07); box-shadow: 0 0 30px rgba(48,255,48,0.08); }
+.verdict-box.monitor { border-color: #ffaa00; background: rgba(255,170,0,0.07); box-shadow: 0 0 30px rgba(255,170,0,0.08); }
+.verdict-box.demolish{ border-color: #ff3030; background: rgba(255,48,48,0.1);  box-shadow: 0 0 30px rgba(255,48,48,0.1); }
 
+/* Large verdict badge text (REPAIR / MONITOR / DEMOLISH) */
 .verdict-badge {
   font-size: 1.6rem;
   font-weight: 900;
@@ -581,9 +897,17 @@ textarea {
 .verdict-box.monitor  .verdict-badge { color: #ffaa00; }
 .verdict-box.demolish .verdict-badge { color: #ff3030; }
 
+/* Verdict detail text and cost estimate */
 .verdict-detail { font-size: 0.85rem; color: #c0c0d0; margin-bottom: 6px; }
 .verdict-cost   { font-size: 1rem; font-weight: bold; color: #70d0ff; }
 
+/* ================================================================
+   EVALUATION MODAL — Action Buttons
+   Three-button row at the bottom of the evaluation modal:
+     - Calculate & Assess (coral, flex: 2 — primary action)
+     - Save to Report (green, flex: 1)
+     - Cancel (grey, flex: 1)
+   ================================================================ */
 .eval-actions {
   display: flex;
   gap: 8px;
@@ -593,6 +917,8 @@ textarea {
 .btn-save  { background: #1a4a2e; flex: 1; margin: 0; }
 .btn-calc:hover  { background: #c73050; }
 .btn-save:hover  { background: #2a6a3e; }
+
+/* Cancel / close button in modal footer */
 .modal-close-btn {
   background: #333;
   flex: 1;
@@ -608,15 +934,20 @@ textarea {
 }
 .modal-close-btn:hover { background: #555; }
 
-/* ============================================================
-   Danger Reference Modal
-   ============================================================ */
+/* ================================================================
+   DANGER REFERENCE MODAL — Tab Navigation
+   Horizontal tab bar with four tabs. Tabs use navy background by
+   default and switch to coral when active. flex-wrap ensures tabs
+   stack gracefully on narrow screens.
+   ================================================================ */
 .danger-tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
+
+/* Individual tab button styling */
 .dtab {
   padding: 6px 14px;
   font-size: 0.8rem;
@@ -631,17 +962,27 @@ textarea {
   transition: background 0.15s;
 }
 .dtab:hover  { background: #1a4a80; }
-.dtab.active { background: #e94560; color: white; border-color: #e94560; }
+/* Active tab: gradient coral with glow */
+.dtab.active { background: linear-gradient(135deg, #e94560, #d63a55); color: white; border-color: #e94560; box-shadow: 0 2px 8px rgba(233,69,96,0.3); }
 
+/* Tab content panels: hidden by default, shown when active */
 .dtab-content { display: none; }
 .dtab-content.active { display: block; }
 
+/* ================================================================
+   DANGER REFERENCE TABLES
+   Full-width data tables with severity-coded left borders on rows.
+   Used for crack width thresholds, depth risk levels, reservoir
+   risks, and the repair decision matrix. Compact font for density.
+   ================================================================ */
 .danger-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
   margin-bottom: 10px;
 }
+
+/* Table header: navy background */
 .danger-table th {
   background: #0f3460;
   color: #e0e0e0;
@@ -649,45 +990,66 @@ textarea {
   text-align: left;
   border-bottom: 1px solid #533483;
 }
+
+/* Table cells */
 .danger-table td {
   padding: 7px 10px;
   border-bottom: 1px solid #0f3460;
   color: #c0c0d0;
 }
+
+/* Severity row indicators: colored left border on first cell */
 .sev-green    td:first-child { border-left: 3px solid #30ff30; color: #30ff30; font-weight: bold; }
 .sev-yellow   td:first-child { border-left: 3px solid #ffdd00; color: #ffdd00; font-weight: bold; }
 .sev-orange   td:first-child { border-left: 3px solid #ff8800; color: #ff8800; font-weight: bold; }
 .sev-red      td:first-child { border-left: 3px solid #ff3030; color: #ff3030; font-weight: bold; }
 .sev-critical td:first-child { border-left: 3px solid #ff0000; color: #ff0000; font-weight: bold; }
+/* Critical rows also get a subtle red background tint */
 .sev-critical td { background: rgba(255,0,0,0.05); }
 
+/* Footnote text below tables (e.g., standard references) */
 .danger-note {
   font-size: 0.75rem;
   color: #666;
   margin-top: 4px;
 }
 
-/* Crack type cards */
+/* ================================================================
+   CRACK TYPE CARDS — Reference Grid
+   Responsive card grid displaying crack type descriptions in the
+   "Crack Types" tab. Each card has a severity-colored left border,
+   a title, description, and a pill-shaped severity tag.
+   ================================================================ */
 .crack-type-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
 }
+
+/* Individual crack type card */
 .crack-card {
-  background: #1a1a2e;
-  border-radius: 8px;
-  padding: 12px;
-  border: 1px solid #0f3460;
+  background: linear-gradient(145deg, #1a1a2e, #1e1e36);
+  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid rgba(15,52,96,0.6);
   border-left: 4px solid;
   font-size: 0.82rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.crack-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 .crack-card h4 { font-size: 0.9rem; color: #e0e0e0; margin-bottom: 6px; }
 .crack-card p  { color: #a0a0c0; line-height: 1.5; margin-bottom: 8px; }
+
+/* Left border color variants for crack severity */
 .sev-green-border  { border-left-color: #30ff30; }
 .sev-yellow-border { border-left-color: #ffdd00; }
 .sev-orange-border { border-left-color: #ff8800; }
 .sev-red-border    { border-left-color: #ff3030; }
 
+/* Severity tag pills inside crack cards */
 .crack-tag {
   display: inline-block;
   font-size: 0.7rem;
@@ -699,7 +1061,12 @@ textarea {
 .crack-tag.orange { background: rgba(255,136,0,0.15);  color: #ff8800; }
 .crack-tag.red    { background: rgba(255,48,48,0.15);  color: #ff3030; }
 
-/* Reservoir warning */
+/* ================================================================
+   RESERVOIR WARNING BANNER
+   High-visibility alert box at the top of the Reservoirs & Dams tab.
+   Red border and tinted background with an emoji icon to draw
+   immediate attention to life-safety warnings.
+   ================================================================ */
 .reservoir-warning {
   background: rgba(255,0,0,0.12);
   border: 2px solid #ff3030;
@@ -714,12 +1081,17 @@ textarea {
 }
 .warn-icon { font-size: 1.4rem; flex-shrink: 0; }
 
+/* ================================================================
+   REFERENCE & WARNING LISTS
+   Styled unordered lists used in the danger reference tabs for
+   standards citations and piping/erosion warning signs.
+   ================================================================ */
 .ref-list, .warn-list {
   font-size: 0.82rem;
   color: #a0a0c0;
   padding-left: 20px;
   line-height: 1.9;
 }
+/* Warning list: red-tinted text with red bullet markers */
 .warn-list { color: #ffaaaa; }
 .warn-list li::marker { color: #ff3030; }
-

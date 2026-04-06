@@ -1,6 +1,13 @@
+# API framework and ASGI server
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+
+# ML inference stack
 ultralytics==8.3.57
+
+# Multipart uploads and image decoding
 python-multipart==0.0.20
 Pillow==11.1.0
+
+# Numerical tensor/array operations used by the ML stack
 numpy==2.2.1

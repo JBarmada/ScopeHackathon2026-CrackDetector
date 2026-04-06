@@ -1,6 +1,8 @@
 // ============================================================
 // Autodesk Crack Inspector — Frontend Controller
 // ============================================================
+// This file coordinates viewer setup, ML detection requests, manual drawing,
+// structural evaluation logic, and report persistence in localStorage.
 
 let viewer = null;
 let crackOverlay = null;
@@ -51,6 +53,7 @@ const resultsCount   = document.getElementById('results-count');
 // ============================================================
 
 async function getAccessToken(callback) {
+  // APS viewer asks for a token through this callback-driven hook.
   try {
     const resp = await fetch('/api/auth/token');
     const data = await resp.json();
@@ -71,6 +74,7 @@ function initViewer() {
       return;
     }
 
+    // Initialize APS runtime and mount a GUI viewer in the main container.
     Autodesk.Viewing.Initializer({ getAccessToken }, () => {
       viewer = new Autodesk.Viewing.GuiViewer3D(viewerContainer);
       const startResult = viewer.start();
@@ -104,6 +108,7 @@ function loadModel(urn) {
       if (resultsCount) resultsCount.textContent = '';
     }
 
+    // Load a translated document node by URN and display default geometry.
     Autodesk.Viewing.Document.load(
       `urn:${urn}`,
       (doc) => {
@@ -139,6 +144,7 @@ function createOverlay() {
 
   return {
     showDetections(detections, imgWidth, imgHeight) {
+      // Convert image-space detections into viewport-space overlay positions.
       container.innerHTML = '';
       const rect = viewerContainer.getBoundingClientRect();
       const scaleX = rect.width / imgWidth;
@@ -205,6 +211,7 @@ function switchToViewer() {
 }
 
 function drawPhotoWithDetections(img, detections) {
+  // Used when viewer content is unavailable; renders results on a 2D canvas.
   switchToCanvas();
 
   const mainArea = document.getElementById('main-area');
@@ -359,6 +366,7 @@ const CRACK_JOKES = [
 ];
 
 async function pollTranslation(urn) {
+  // Poll APS manifest until translation completes or fails.
   let jokeIndex = 0;
   const poll = setInterval(async () => {
     try {
@@ -390,6 +398,7 @@ async function pollTranslation(urn) {
 
 // --- Model List ---
 async function refreshModelList() {
+  // Refreshes model selector from server-side OSS object listing.
   try {
     const resp = await fetch('/api/models');
     const models = await resp.json();
@@ -457,6 +466,7 @@ confidenceSlider.addEventListener('input', () => {
 const MAX_IMG_SIZE = 1280;
 
 function resizeImage(file) {
+  // Pre-resize images in browser to reduce upload and inference cost.
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -642,6 +652,7 @@ helpModal.addEventListener('click', (e) => { if (e.target === helpModal) helpMod
 const STORAGE_KEY = 'crack_inspector_log';
 
 function saveInspectionEntry(detections) {
+  // Persists a lightweight scan summary to drive 30-day reporting.
   const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   log.push({
     timestamp: Date.now(),
@@ -656,6 +667,7 @@ function saveInspectionEntry(detections) {
 }
 
 function renderReport(filterModel = 'all') {
+  // Renders filter controls, summary metrics, and reverse-chronological scans.
   const log = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   const content = document.getElementById('report-content');
 
@@ -955,6 +967,7 @@ function syncFromExtProps(ext) {
 }
 
 function setMeasureMode(mode) {
+  // Small state machine for calibration/depth click workflows.
   measureMode = mode;
   measurePoints = [];
   if (mode) {
@@ -1055,6 +1068,7 @@ let drawStart = null;
 const drawCtx = drawCanvas.getContext('2d');
 
 function enterDrawMode() {
+  // Activates overlay canvas for user-defined manual detections.
   isDrawMode = true;
   drawModeBtn.classList.add('active-tool');
   drawModeBtn.textContent = '✏️ Drawing Mode ON';
@@ -1231,6 +1245,7 @@ const REPAIR_UNIT_DEFAULTS = {
 };
 
 function suggestRepair(crackType, widthMm, depthMm, material, nearWater, loadBearing) {
+  // Rule-based method suggestion before final verdict/cost computation.
   const w = widthMm || 0;
   const d = depthMm || 0;
   if (nearWater && d > 30) return 'grouting';
@@ -1277,6 +1292,7 @@ const MONITOR_JOKES = [
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
 function calcVerdict(crackType, widthMm, depthMm, nearWater, seismic, loadBearing, activity) {
+  // Risk classifier that returns REPAIR, MONITOR, or DEMOLISH with reasoning.
   const w = widthMm || 0;
   const d = depthMm || 0;
 
@@ -1306,6 +1322,7 @@ function calcVerdict(crackType, widthMm, depthMm, nearWater, seismic, loadBearin
 }
 
 function openEvalModal(detIndex = 0) {
+  // Opens modal with auto-filled values based on currently selected detection.
   if (currentDetections.length === 0) return;
 
   // Populate detection dropdown
@@ -1353,6 +1370,7 @@ evalDetSelect.addEventListener('change', () => {
 });
 
 function updateVolumeDisplay() {
+  // Computes crack volume and adds +25% process allowance for repair volume.
   const w = parseFloat(document.getElementById('eval-width').value) || 0;
   const d = parseFloat(document.getElementById('eval-depth').value) || 0;
   const l = parseFloat(document.getElementById('eval-length').value) || 0;
@@ -1506,6 +1524,7 @@ document.querySelectorAll('.dtab').forEach(btn => {
 // ============================================================
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Boot sequence: initialize viewer runtime and load existing model options.
   await initViewer();
   refreshModelList();
 });

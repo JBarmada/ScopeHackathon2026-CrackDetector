@@ -1,3 +1,10 @@
+# Docker Compose orchestration for Crack Jad.
+#
+# Services:
+# - server: Node/Express web app and API proxy (public entrypoint on port 3000)
+# - ml-service: FastAPI + YOLOv8 inference worker (internal service on port 8000)
+#
+# The server depends on a healthy ml-service container before startup.
 services:
   server:
     build: ./server
@@ -31,5 +38,7 @@ services:
       - app-network
 
 networks:
+  # Shared bridge network so services can resolve each other by name
+  # (e.g., server calls http://ml-service:8000 via Docker DNS).
   app-network:
     driver: bridge
