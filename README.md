@@ -129,8 +129,8 @@ Built in 48 hours as a hackathon project.
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/yourusername/crack-jad.git
-cd crack-jad
+git clone https://github.com/JBarmada/ScopeHackathon2026-CrackDetector.git
+cd ScopeHackathon2026-CrackDetector
 ```
 
 ### 2. Set up environment variables
@@ -237,6 +237,6 @@ crack-jad/
 ---
 
 <div align="center">
-Built with too much coffee and not enough sleep at a hackathon ☕<br>
+Built with too many donuts and not enough sleep at a hackathon ☕<br>
 <sub>Jad approves this message.</sub>
 </div>
